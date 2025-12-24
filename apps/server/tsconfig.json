@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "baseUrl": ".",
+    "types": ["bun-types"],
+    "paths": {
+      "@geo/shared-types": ["../../packages/shared-types/src/index.ts"],
+      "@geo/shared-types/*": ["../../packages/shared-types/src/*"]
+    }
+  },
+  "include": ["src", "../../packages/shared-types/src"]
+}

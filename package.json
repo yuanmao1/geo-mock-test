@@ -1,12 +1,21 @@
 {
   "name": "geo-mock",
   "version": "1.0.50",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "bun run --watch src/index.ts"
+    "dev": "bun run --watch apps/server/src/index.ts",
+    "start": "bun apps/server/src/index.ts",
+    "build": "bun run --cwd apps/web build",
+    "dev:web": "bun run --cwd apps/web dev"
   },
   "dependencies": {
-    "elysia": "latest"
+    "@geo/shared-types": "workspace:*",
+    "elysia": "latest",
+    "@elysiajs/cors": "latest"
   },
   "devDependencies": {
     "bun-types": "latest"
