@@ -7,7 +7,7 @@ services:
     container_name: geo-mock-nginx
     restart: unless-stopped
     ports:
-      - "${NGINX_PORT:-8080}:80"
+      - "${NGINX_PORT:-8182}:80"
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
@@ -16,7 +16,7 @@ services:
 
   # API Server - handles /api/* requests
   server:
-    image: codedevin/geo-mock-test:v1.0
+    image: codedevin/geo-mock-test:v1.1
     build:
       context: ..
       dockerfile: docker/Dockerfile
@@ -33,7 +33,7 @@ services:
 
   # Web Frontend - serves the React app
   web:
-    image: codedevin/geo-mock-test:v1.0
+    image: codedevin/geo-mock-test:v1.1
     build:
       context: ..
       dockerfile: docker/Dockerfile
