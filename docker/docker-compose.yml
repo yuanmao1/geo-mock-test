@@ -25,7 +25,7 @@ services:
     expose:
       - "3000"
     env_file:
-      - ../.env
+      - .env
     environment:
       - NODE_ENV=production
       - PORT=3000
@@ -42,7 +42,7 @@ services:
     expose:
       - "5173"
     env_file:
-      - ../.env
+      - .env
     environment:
       - NODE_ENV=development
       - VITE_API_TARGET=

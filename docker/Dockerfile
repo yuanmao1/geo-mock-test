@@ -1,5 +1,5 @@
 # GEO Mock Test - 单镜像构建
-FROM oven/bun:1
+FROM oven/bun:1-alpine
 
 WORKDIR /app
 
