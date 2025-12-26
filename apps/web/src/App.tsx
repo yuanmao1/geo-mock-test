@@ -49,6 +49,66 @@ const stripOuterMarkdownFence = (value: string) => {
   return (match?.[1] ?? trimmed).trim();
 };
 
+// 生成结构化纯文本（类似robots.txt格式）
+const generateStructuredText = (products: Product[]) => {
+  const timestamp = new Date().toISOString();
+  const lines: string[] = [
+    `# GEO-OPTIMIZED PRODUCT DATA`,
+    `# Generated: ${timestamp}`,
+    `# Format: Structured Text for AI Consumption`,
+    `# Total Products: ${products.length}`,
+    ``,
+    `User-agent: *`,
+    `Allow: /api/products`,
+    `Allow: /api/generate`,
+    ``,
+    `---BEGIN_PRODUCT_DATA---`,
+    ``
+  ];
+
+  products.forEach((product, index) => {
+    const geoList = Array.isArray(product.geoOptimized) ? product.geoOptimized : [product.geoOptimized];
+    
+    lines.push(`[PRODUCT_${index + 1}]`);
+    lines.push(`ID: ${product.id}`);
+    lines.push(`NAME: ${product.name}`);
+    lines.push(`CATEGORY: ${product.category}`);
+    lines.push(`PRICE: ${product.price}`);
+    lines.push(`RATING: ${product.rating}`);
+    lines.push(`REVIEWS: ${product.reviews}`);
+    lines.push(`IMAGE_URL: ${product.image}`);
+    lines.push(``);
+    
+    geoList.forEach((geo, geoIndex) => {
+      lines.push(`  [GEO_VERSION_${geoIndex + 1}]`);
+      lines.push(`  PRODUCT_NAME: ${geo.productName || 'N/A'}`);
+      lines.push(`  PRODUCT_TYPE: ${geo.productType || 'N/A'}`);
+      lines.push(`  CORE_FUNCTIONS: ${geo.coreFunctions?.join(', ') || 'N/A'}`);
+      lines.push(`  TARGET_AUDIENCE: ${geo.targetAudience?.join(', ') || 'N/A'}`);
+      lines.push(`  UNSUITABLE_SCENARIOS: ${geo.unsuitableScenarios?.join(', ') || 'N/A'}`);
+      lines.push(`  KEY_CONCLUSION:`);
+      const conclusion = stripOuterMarkdownFence(geo.keyConclusion || 'N/A');
+      conclusion.split('\n').forEach(line => {
+        lines.push(`    | ${line}`);
+      });
+      lines.push(`  [/GEO_VERSION_${geoIndex + 1}]`);
+      lines.push(``);
+    });
+    
+    lines.push(`[/PRODUCT_${index + 1}]`);
+    lines.push(``);
+  });
+
+  lines.push(`---END_PRODUCT_DATA---`);
+  lines.push(``);
+  lines.push(`# METADATA`);
+  lines.push(`SCHEMA_VERSION: 1.0`);
+  lines.push(`ENCODING: UTF-8`);
+  lines.push(`CONTENT_TYPE: text/plain; charset=utf-8`);
+  
+  return lines.join('\n');
+};
+
 const MarkdownBox = ({ content }: { content: string }) => {
   const normalized = stripOuterMarkdownFence(content);
 
@@ -443,18 +503,16 @@ const GeoControlCenter = () => {
             退出 AI 视角
           </button>
         )}
-        <button 
-          onClick={() => setIsOpen(true)}
-          className={`w-16 h-16 rounded-full flex items-center justify-center shadow-2xl transition-all transform hover:scale-110 active:scale-95 ${
-            isAiPerspective 
-              ? 'bg-indigo-600 text-white ring-4 ring-indigo-500/30' 
-              : 'bg-slate-900 text-white'
-          }`}
-        >
-          <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-          </svg>
-        </button>
+        {!isAiPerspective && (
+          <button 
+            onClick={() => setIsOpen(true)}
+            className="w-16 h-16 rounded-full flex items-center justify-center shadow-2xl transition-all transform hover:scale-110 active:scale-95 bg-slate-900 text-white"
+          >
+            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* Config Modal */}
@@ -545,16 +603,24 @@ const HomePage = () => {
     ? uniqueProducts 
     : uniqueProducts.filter(p => p.category === filter);
 
+  // AI视角：纯文本结构化展示
+  if (isAiPerspective) {
+    const structuredText = generateStructuredText(filteredProducts);
+    return (
+      <div className="min-h-screen bg-black p-4">
+        <pre className="font-mono text-xs text-green-400 whitespace-pre-wrap break-all leading-relaxed">
+          {structuredText}
+        </pre>
+      </div>
+    );
+  }
+
   return (
-    <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 transition-colors duration-500 ${isAiPerspective ? 'bg-slate-950' : ''}`}>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
         <div>
-          <h1 className={`text-2xl font-bold ${isAiPerspective ? 'text-white font-mono' : 'text-gray-900'}`}>
-            {isAiPerspective ? '> SCANNING_RECOMMENDATIONS' : '精选推荐'}
-          </h1>
-          <p className={`${isAiPerspective ? 'text-indigo-400/60 font-mono text-xs' : 'text-gray-500 text-sm'}`}>
-            {isAiPerspective ? 'STATUS: AI_OPTIMIZED_VIEW_ACTIVE' : '发现最适合您的优质商品'}
-          </p>
+          <h1 className="text-2xl font-bold text-gray-900">精选推荐</h1>
+          <p className="text-gray-500 text-sm">发现最适合您的优质商品</p>
         </div>
         
         <div className="flex space-x-2 overflow-x-auto pb-2 md:pb-0">
@@ -568,13 +634,9 @@ const HomePage = () => {
               key={btn.id}
               onClick={() => setFilter(btn.id as any)}
               className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all ${
-                isAiPerspective
-                  ? filter === btn.id 
-                    ? 'bg-indigo-600 text-white border-indigo-500' 
-                    : 'bg-slate-900 text-indigo-400 border border-indigo-500/30 hover:bg-slate-800'
-                  : filter === btn.id 
-                    ? 'bg-gray-900 text-white shadow-sm' 
-                    : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
+                filter === btn.id 
+                  ? 'bg-gray-900 text-white shadow-sm' 
+                  : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
               }`}
             >
               {btn.label}
@@ -583,11 +645,7 @@ const HomePage = () => {
         </div>
       </div>
 
-      <div className={`grid gap-6 ${
-        isAiPerspective 
-          ? 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3' 
-          : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
-      }`}>
+      <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {filteredProducts.map(product => (
           <ProductCard 
             key={product.id} 
@@ -1019,47 +1077,34 @@ const App = () => {
       models
     }}>
       <Router>
-        <div className={`min-h-screen font-sans transition-colors duration-500 ${isAiPerspective ? 'bg-slate-950' : 'bg-white'}`}>
-          {/* Navigation Bar */}
-          <nav className={`border-b sticky top-0 z-50 transition-all duration-500 ${
-            isAiPerspective 
-              ? 'bg-slate-950/80 backdrop-blur-md border-indigo-500/20' 
-              : 'bg-white border-gray-100'
-          }`}>
+        <div className={`min-h-screen font-sans transition-colors duration-500 ${isAiPerspective ? 'bg-black' : 'bg-white'}`}>
+          {/* Navigation Bar - hidden in AI perspective */}
+          {!isAiPerspective && (
+          <nav className="border-b sticky top-0 z-50 bg-white border-gray-100">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <div className="flex justify-between h-16 items-center">
                 <Link to="/" className="flex items-center space-x-2">
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
-                    isAiPerspective ? 'bg-indigo-500 shadow-lg shadow-indigo-500/50' : 'bg-indigo-600'
-                  }`}>
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-indigo-600">
                     <span className="text-white font-bold text-xl">G</span>
                   </div>
-                  <span className={`text-xl font-black tracking-tight transition-colors ${
-                    isAiPerspective ? 'text-white' : 'text-gray-900'
-                  }`}>
-                    GEO<span className={isAiPerspective ? 'text-indigo-400' : 'text-indigo-600'}>MALL</span>
+                  <span className="text-xl font-black tracking-tight text-gray-900">
+                    GEO<span className="text-indigo-600">MALL</span>
                   </span>
                 </Link>
                 
                 <div className="hidden md:flex items-center space-x-8">
-                  <Link to="/" className={`text-sm font-medium transition-colors ${
-                    isAiPerspective ? 'text-indigo-300 hover:text-white' : 'text-gray-700 hover:text-indigo-600'
-                  }`}>首页</Link>
-                  <a href="#" className={`text-sm font-medium transition-colors ${
-                    isAiPerspective ? 'text-indigo-500/60 hover:text-indigo-300' : 'text-gray-500 hover:text-indigo-600'
-                  }`}>新品</a>
-                  <a href="#" className={`text-sm font-medium transition-colors ${
-                    isAiPerspective ? 'text-indigo-500/60 hover:text-indigo-300' : 'text-gray-500 hover:text-indigo-600'
-                  }`}>限时特惠</a>
+                  <Link to="/" className="text-sm font-medium text-gray-700 hover:text-indigo-600">首页</Link>
+                  <a href="#" className="text-sm font-medium text-gray-500 hover:text-indigo-600">新品</a>
+                  <a href="#" className="text-sm font-medium text-gray-500 hover:text-indigo-600">限时特惠</a>
                 </div>
 
                 <div className="flex items-center space-x-4">
-                  <button className={`p-2 transition-colors ${isAiPerspective ? 'text-indigo-500/60 hover:text-indigo-300' : 'text-gray-400 hover:text-gray-600'}`}>
+                  <button className="p-2 text-gray-400 hover:text-gray-600">
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
                   </button>
-                  <button className={`p-2 relative transition-colors ${isAiPerspective ? 'text-indigo-500/60 hover:text-indigo-300' : 'text-gray-400 hover:text-gray-600'}`}>
+                  <button className="p-2 relative text-gray-400 hover:text-gray-600">
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
                     </svg>
@@ -1069,6 +1114,7 @@ const App = () => {
               </div>
             </div>
           </nav>
+          )}
 
           <main>
             <Routes>
@@ -1077,15 +1123,15 @@ const App = () => {
             </Routes>
           </main>
 
-          <footer className={`border-t py-12 mt-20 transition-colors duration-500 ${
-            isAiPerspective ? 'bg-slate-950 border-indigo-500/10' : 'bg-gray-50 border-gray-100'
-          }`}>
+          {!isAiPerspective && (
+          <footer className="border-t py-12 mt-20 transition-colors duration-500 bg-gray-50 border-gray-100">
             <div className="max-w-7xl mx-auto px-4 text-center">
-              <p className={`text-sm transition-colors ${isAiPerspective ? 'text-indigo-500/40 font-mono' : 'text-gray-400'}`}>
-                {isAiPerspective ? 'SYSTEM_LOG: GEO_MOCK_PLATFORM_V1.0.50_STABLE' : '© 2025 GEOMALL 演示平台 - 模拟真实电商交互体验'}
+              <p className="text-sm transition-colors text-gray-400">
+                © 2025 GEOMALL 演示平台 - 模拟真实电商交互体验
               </p>
             </div>
           </footer>
+          )}
 
           <GeoControlCenter />
         </div>
