@@ -12,7 +12,10 @@ import {
 import { log } from "../logger";
 import { getProviderConfig } from "../llm/providerConfig";
 import { generatePrompt, pickRandomGeoCopyType } from "../llm/prompt";
-import { requestChatCompletion } from "../llm/request";
+import {
+  requestChatCompletion,
+  requestChatCompletionStream,
+} from "../llm/request";
 
 export function registerApiRoutes(app: any) {
   return app
@@ -40,10 +43,11 @@ export function registerApiRoutes(app: any) {
           copyType?: GeoCopyType;
           model: string;
           customPrompt?: string;
+          stream?: boolean;
         };
         set: any;
       }) => {
-        const { productId, model, customPrompt } = body;
+        const { productId, model, customPrompt, stream = false } = body;
         const copyType = body.copyType ?? pickRandomGeoCopyType();
 
         const product = mockProducts.find((p) => p.id === productId);
@@ -68,6 +72,61 @@ export function registerApiRoutes(app: any) {
         const startedAt = performance.now();
 
         try {
+          // 流式响应
+          if (stream) {
+            const streamResponse = await requestChatCompletionStream(
+              config,
+              model,
+              prompt
+            );
+
+            // 解析 OpenAI SSE 格式，提取 content
+            const decoder = new TextDecoder();
+            const encoder = new TextEncoder();
+            let buffer = "";
+
+            const parseStream = new TransformStream({
+              transform(chunk, controller) {
+                buffer += decoder.decode(chunk, { stream: true });
+                const lines = buffer.split("\n");
+                buffer = lines.pop() || "";
+
+                for (const line of lines) {
+                  if (line.startsWith("data: ")) {
+                    const data = line.slice(6).trim();
+                    if (data === "[DONE]") return;
+                    try {
+                      const json = JSON.parse(data);
+                      const content = json.choices?.[0]?.delta?.content;
+                      if (content) {
+                        controller.enqueue(
+                          encoder.encode(
+                            `data: ${JSON.stringify({ content })}\n\n`
+                          )
+                        );
+                      }
+                    } catch {
+                      // 解析失败，跳过
+                    }
+                  }
+                }
+              },
+              flush(controller) {
+                controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+              },
+            });
+
+            // 返回原生 Response 对象，Elysia 会正确处理
+            return new Response(streamResponse.pipeThrough(parseStream), {
+              headers: {
+                "Content-Type": "text/event-stream",
+                "Cache-Control": "no-cache",
+                Connection: "keep-alive",
+              },
+            });
+          }
+
+          // 非流式响应
           const content = await requestChatCompletion(config, model, prompt);
           const durationMs = Math.round(performance.now() - startedAt);
           log("info", "LLM generation ok", {
@@ -106,6 +165,7 @@ export function registerApiRoutes(app: any) {
           ),
           model: t.String(),
           customPrompt: t.Optional(t.String()),
+          stream: t.Optional(t.Boolean()),
         }),
       }
     );

@@ -18,6 +18,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Product } from "@geo/shared-types";
 import { GeoCopyType, LLMModel } from "@geo/shared-types";
+import StreamTest from "./StreamTest";
 
 // API_BASE: Use VITE_API_TARGET for dev proxy, or VITE_BASE_PATH for production sub-path deployment
 const API_BASE =
@@ -46,7 +47,11 @@ interface GeoContextType {
   setIsAiPerspective: (v: boolean) => void;
   isGenerating: boolean;
   startGeneration: (modelId: string, count: number) => void;
-  startSingleGeneration: (productId: string, modelId: string, count: number) => void;
+  startSingleGeneration: (
+    productId: string,
+    modelId: string,
+    count: number
+  ) => void;
   generationProgress: number;
   products: Product[];
   setProducts: (products: Product[]) => void;
@@ -84,12 +89,14 @@ const generateStructuredText = (products: Product[]) => {
     `Allow: /api/generate`,
     ``,
     `---BEGIN_PRODUCT_DATA---`,
-    ``
+    ``,
   ];
 
   products.forEach((product, index) => {
-    const geoList = Array.isArray(product.geoOptimized) ? product.geoOptimized : [product.geoOptimized];
-    
+    const geoList = Array.isArray(product.geoOptimized)
+      ? product.geoOptimized
+      : [product.geoOptimized];
+
     lines.push(`[PRODUCT_${index + 1}]`);
     lines.push(`ID: ${product.id}`);
     lines.push(`NAME: ${product.name}`);
@@ -99,23 +106,29 @@ const generateStructuredText = (products: Product[]) => {
     lines.push(`REVIEWS: ${product.reviews}`);
     lines.push(`IMAGE_URL: ${product.image}`);
     lines.push(``);
-    
+
     geoList.forEach((geo, geoIndex) => {
       lines.push(`  [GEO_VERSION_${geoIndex + 1}]`);
-      lines.push(`  PRODUCT_NAME: ${geo.productName || 'N/A'}`);
-      lines.push(`  PRODUCT_TYPE: ${geo.productType || 'N/A'}`);
-      lines.push(`  CORE_FUNCTIONS: ${geo.coreFunctions?.join(', ') || 'N/A'}`);
-      lines.push(`  TARGET_AUDIENCE: ${geo.targetAudience?.join(', ') || 'N/A'}`);
-      lines.push(`  UNSUITABLE_SCENARIOS: ${geo.unsuitableScenarios?.join(', ') || 'N/A'}`);
+      lines.push(`  PRODUCT_NAME: ${geo.productName || "N/A"}`);
+      lines.push(`  PRODUCT_TYPE: ${geo.productType || "N/A"}`);
+      lines.push(`  CORE_FUNCTIONS: ${geo.coreFunctions?.join(", ") || "N/A"}`);
+      lines.push(
+        `  TARGET_AUDIENCE: ${geo.targetAudience?.join(", ") || "N/A"}`
+      );
+      lines.push(
+        `  UNSUITABLE_SCENARIOS: ${
+          geo.unsuitableScenarios?.join(", ") || "N/A"
+        }`
+      );
       lines.push(`  KEY_CONCLUSION:`);
-      const conclusion = stripOuterMarkdownFence(geo.keyConclusion || 'N/A');
-      conclusion.split('\n').forEach(line => {
+      const conclusion = stripOuterMarkdownFence(geo.keyConclusion || "N/A");
+      conclusion.split("\n").forEach((line) => {
         lines.push(`    | ${line}`);
       });
       lines.push(`  [/GEO_VERSION_${geoIndex + 1}]`);
       lines.push(``);
     });
-    
+
     lines.push(`[/PRODUCT_${index + 1}]`);
     lines.push(``);
   });
@@ -126,8 +139,8 @@ const generateStructuredText = (products: Product[]) => {
   lines.push(`SCHEMA_VERSION: 1.0`);
   lines.push(`ENCODING: UTF-8`);
   lines.push(`CONTENT_TYPE: text/plain; charset=utf-8`);
-  
-  return lines.join('\n');
+
+  return lines.join("\n");
 };
 
 // 生成单个商品的结构化纯文本
@@ -143,42 +156,46 @@ const generateSingleProductText = (product: Product) => {
     `Allow: /api/generate`,
     ``,
     `---BEGIN_PRODUCT_DATA---`,
-    ``
+    ``,
   ];
 
-  const geoList = Array.isArray(product.geoOptimized) ? product.geoOptimized : [product.geoOptimized];
-  
+  const geoList = Array.isArray(product.geoOptimized)
+    ? product.geoOptimized
+    : [product.geoOptimized];
+
   lines.push(`[PRODUCT]`);
   lines.push(`ID: ${product.id}`);
   lines.push(`NAME: ${product.name}`);
   lines.push(`CATEGORY: ${product.category}`);
   lines.push(`PRICE: ${product.price}`);
-  lines.push(`ORIGINAL_PRICE: ${product.originalPrice || 'N/A'}`);
+  lines.push(`ORIGINAL_PRICE: ${product.originalPrice || "N/A"}`);
   lines.push(`RATING: ${product.rating}`);
   lines.push(`REVIEW_COUNT: ${product.reviewCount}`);
   lines.push(`IMAGE_URL: ${product.image}`);
-  lines.push(`DESCRIPTION: ${product.humanReadable?.description || 'N/A'}`);
+  lines.push(`DESCRIPTION: ${product.humanReadable?.description || "N/A"}`);
   lines.push(``);
-  
+
   lines.push(`GEO_VERSIONS_COUNT: ${geoList.length}`);
   lines.push(``);
-  
+
   geoList.forEach((geo, geoIndex) => {
     lines.push(`  [GEO_VERSION_${geoIndex + 1}]`);
-    lines.push(`  PRODUCT_NAME: ${geo.productName || 'N/A'}`);
-    lines.push(`  PRODUCT_TYPE: ${geo.productType || 'N/A'}`);
-    lines.push(`  CORE_FUNCTIONS: ${geo.coreFunctions?.join(', ') || 'N/A'}`);
-    lines.push(`  TARGET_AUDIENCE: ${geo.targetAudience?.join(', ') || 'N/A'}`);
-    lines.push(`  UNSUITABLE_SCENARIOS: ${geo.unsuitableScenarios?.join(', ') || 'N/A'}`);
+    lines.push(`  PRODUCT_NAME: ${geo.productName || "N/A"}`);
+    lines.push(`  PRODUCT_TYPE: ${geo.productType || "N/A"}`);
+    lines.push(`  CORE_FUNCTIONS: ${geo.coreFunctions?.join(", ") || "N/A"}`);
+    lines.push(`  TARGET_AUDIENCE: ${geo.targetAudience?.join(", ") || "N/A"}`);
+    lines.push(
+      `  UNSUITABLE_SCENARIOS: ${geo.unsuitableScenarios?.join(", ") || "N/A"}`
+    );
     lines.push(`  KEY_CONCLUSION:`);
-    const conclusion = stripOuterMarkdownFence(geo.keyConclusion || 'N/A');
-    conclusion.split('\n').forEach(line => {
+    const conclusion = stripOuterMarkdownFence(geo.keyConclusion || "N/A");
+    conclusion.split("\n").forEach((line) => {
       lines.push(`    | ${line}`);
     });
     lines.push(`  [/GEO_VERSION_${geoIndex + 1}]`);
     lines.push(``);
   });
-  
+
   lines.push(`[/PRODUCT]`);
   lines.push(``);
   lines.push(`---END_PRODUCT_DATA---`);
@@ -187,8 +204,8 @@ const generateSingleProductText = (product: Product) => {
   lines.push(`SCHEMA_VERSION: 1.0`);
   lines.push(`ENCODING: UTF-8`);
   lines.push(`CONTENT_TYPE: text/plain; charset=utf-8`);
-  
-  return lines.join('\n');
+
+  return lines.join("\n");
 };
 
 const MarkdownBox = ({ content }: { content: string }) => {
@@ -731,7 +748,9 @@ const GeoControlCenter = () => {
   // 检测是否在商品详情页
   const productMatch = location.pathname.match(/^\/product\/(.+)$/);
   const currentProductId = productMatch ? productMatch[1] : null;
-  const currentProduct = currentProductId ? products.find(p => p.id === currentProductId) : null;
+  const currentProduct = currentProductId
+    ? products.find((p) => p.id === currentProductId)
+    : null;
 
   // 只有全量生成时才显示全局进度弹窗（generatingProductId 为 null 时表示全量生成）
   if (isGenerating && !generatingProductId) {
@@ -794,8 +813,18 @@ const GeoControlCenter = () => {
             onClick={() => setIsOpen(true)}
             className="w-16 h-16 rounded-full flex items-center justify-center shadow-2xl transition-all transform hover:scale-110 active:scale-95 bg-slate-900 text-white"
           >
-            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            <svg
+              className="w-8 h-8"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M13 10V3L4 14h7v7l9-11h-7z"
+              />
             </svg>
           </button>
         )}
@@ -826,13 +855,12 @@ const GeoControlCenter = () => {
                     d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
                   />
                 </svg>
-                {currentProduct ? '单商品 GEO 优化' : 'GEO 优化配置'}
+                {currentProduct ? "单商品 GEO 优化" : "GEO 优化配置"}
               </h3>
               <p className="text-slate-400 text-xs mt-1">
-                {currentProduct 
+                {currentProduct
                   ? `为「${currentProduct.name}」生成 AI 优化内容`
-                  : `配置 AI 引擎以生成强结构化内容`
-                }
+                  : `配置 AI 引擎以生成强结构化内容`}
               </p>
             </div>
 
@@ -995,11 +1023,21 @@ const HomePage = () => {
 const ProductDetailPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { isAiPerspective, products, models, startSingleGeneration, isGenerating, generationProgress, generatingProductId } = useGeo();
+  const {
+    isAiPerspective,
+    products,
+    models,
+    startSingleGeneration,
+    isGenerating,
+    generationProgress,
+    generatingProductId,
+  } = useGeo();
   const [geoPageIndex, setGeoPageIndex] = useState(0);
   const [activeTab, setActiveTab] = useState<"details" | "reviews">("details");
   const [showGeoConfig, setShowGeoConfig] = useState(false);
-  const [selectedEngine, setSelectedEngine] = useState(models[0]?.id || "gpt-4o");
+  const [selectedEngine, setSelectedEngine] = useState(
+    models[0]?.id || "gpt-4o"
+  );
   const [geoCount, setGeoCount] = useState(1);
 
   // 当前商品正在生成中
@@ -1053,7 +1091,7 @@ const ProductDetailPage = () => {
                 GENERATING GEO CONTENT FOR: {product.name}
               </div>
               <div className="mt-4 w-64 h-2 bg-slate-800 rounded">
-                <div 
+                <div
                   className="h-full bg-green-500 rounded transition-all duration-300"
                   style={{ width: `${generationProgress}%` }}
                 />
@@ -1078,10 +1116,9 @@ const ProductDetailPage = () => {
                 : "bg-slate-900 text-green-400 border-green-500/50 hover:bg-slate-800"
             }`}
           >
-            {isCurrentProductGenerating 
+            {isCurrentProductGenerating
               ? `[GENERATING... ${generationProgress}%]`
-              : "[REGENERATE_GEO_CONTENT]"
-            }
+              : "[REGENERATE_GEO_CONTENT]"}
           </button>
         </div>
 
@@ -1089,18 +1126,22 @@ const ProductDetailPage = () => {
         {showGeoConfig && (
           <div className="fixed inset-0 z-[200] bg-black/90 flex items-center justify-center p-4">
             <div className="bg-slate-900 border border-green-500/30 rounded-lg max-w-sm w-full p-6 font-mono">
-              <h3 className="text-green-400 text-lg mb-4"># CONFIGURE_GEO_GENERATION</h3>
-              
+              <h3 className="text-green-400 text-lg mb-4">
+                # CONFIGURE_GEO_GENERATION
+              </h3>
+
               <div className="mb-4">
-                <label className="block text-green-500/60 text-xs mb-2">MODEL_ID:</label>
+                <label className="block text-green-500/60 text-xs mb-2">
+                  MODEL_ID:
+                </label>
                 <div className="grid grid-cols-2 gap-2">
-                  {models.map(m => (
+                  {models.map((m) => (
                     <button
                       key={m.id}
                       onClick={() => setSelectedEngine(m.id)}
                       className={`px-3 py-2 text-xs border rounded transition-all ${
-                        selectedEngine === m.id 
-                          ? "border-green-500 text-green-400 bg-green-500/10" 
+                        selectedEngine === m.id
+                          ? "border-green-500 text-green-400 bg-green-500/10"
                           : "border-slate-700 text-slate-400 hover:border-slate-600"
                       }`}
                     >
@@ -1111,23 +1152,28 @@ const ProductDetailPage = () => {
               </div>
 
               <div className="mb-6">
-                <label className="block text-green-500/60 text-xs mb-2">VERSION_COUNT: {geoCount}</label>
-                <input 
-                  type="range" min="1" max="5" step="1" 
-                  value={geoCount} 
+                <label className="block text-green-500/60 text-xs mb-2">
+                  VERSION_COUNT: {geoCount}
+                </label>
+                <input
+                  type="range"
+                  min="1"
+                  max="5"
+                  step="1"
+                  value={geoCount}
                   onChange={(e) => setGeoCount(parseInt(e.target.value))}
                   className="w-full accent-green-500"
                 />
               </div>
 
               <div className="flex gap-2">
-                <button 
+                <button
                   onClick={() => setShowGeoConfig(false)}
                   className="flex-1 py-2 text-sm border border-slate-700 text-slate-400 rounded hover:bg-slate-800 transition-all"
                 >
                   [CANCEL]
                 </button>
-                <button 
+                <button
                   onClick={() => {
                     setShowGeoConfig(false);
                     startSingleGeneration(product.id, selectedEngine, geoCount);
@@ -1375,14 +1421,10 @@ const ProductDetailPage = () => {
             )}
 
             <div className="flex gap-4 mt-auto pt-8">
-              <button
-                className="flex-1 py-4 rounded-xl font-bold transition-all shadow-lg bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200"
-              >
+              <button className="flex-1 py-4 rounded-xl font-bold transition-all shadow-lg bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200">
                 立即购买
               </button>
-              <button
-                className="flex-1 border-2 py-4 rounded-xl font-bold transition-all border-gray-200 text-gray-900 hover:bg-gray-50"
-              >
+              <button className="flex-1 border-2 py-4 rounded-xl font-bold transition-all border-gray-200 text-gray-900 hover:bg-gray-50">
                 加入购物车
               </button>
             </div>
@@ -1400,16 +1442,41 @@ const ProductDetailPage = () => {
               >
                 {isCurrentProductGenerating ? (
                   <>
-                    <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    <svg
+                      className="w-5 h-5 animate-spin"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      ></circle>
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
                     </svg>
                     <span>正在生成 GEO 内容... {generationProgress}%</span>
                   </>
                 ) : (
                   <>
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M13 10V3L4 14h7v7l9-11h-7z"
+                      />
                     </svg>
                     <span>为此商品生成 GEO 优化内容</span>
                   </>
@@ -1423,25 +1490,39 @@ const ProductDetailPage = () => {
                 <div className="bg-white rounded-3xl max-w-sm w-full overflow-hidden shadow-2xl animate-fadeIn">
                   <div className="bg-gradient-to-r from-purple-600 to-indigo-600 p-6 text-white">
                     <h3 className="text-xl font-bold flex items-center">
-                      <svg className="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      <svg
+                        className="w-6 h-6 mr-2"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M13 10V3L4 14h7v7l9-11h-7z"
+                        />
                       </svg>
                       单商品 GEO 优化
                     </h3>
-                    <p className="text-purple-100 text-xs mt-1">为「{product.name}」生成 AI 优化内容</p>
+                    <p className="text-purple-100 text-xs mt-1">
+                      为「{product.name}」生成 AI 优化内容
+                    </p>
                   </div>
-                  
+
                   <div className="p-6 space-y-6">
                     <div>
-                      <label className="block text-xs font-bold text-gray-400 uppercase mb-2">选择 AI 引擎</label>
+                      <label className="block text-xs font-bold text-gray-400 uppercase mb-2">
+                        选择 AI 引擎
+                      </label>
                       <div className="grid grid-cols-2 gap-2">
-                        {models.map(m => (
+                        {models.map((m) => (
                           <button
                             key={m.id}
                             onClick={() => setSelectedEngine(m.id)}
                             className={`px-3 py-2 rounded-xl text-sm font-medium border-2 transition-all ${
-                              selectedEngine === m.id 
-                                ? "border-purple-600 bg-purple-50 text-purple-600" 
+                              selectedEngine === m.id
+                                ? "border-purple-600 bg-purple-50 text-purple-600"
                                 : "border-gray-100 text-gray-500 hover:border-gray-200"
                             }`}
                           >
@@ -1452,31 +1533,42 @@ const ProductDetailPage = () => {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-bold text-gray-400 uppercase mb-2">生成版本数量</label>
-                      <input 
-                        type="range" min="1" max="5" step="1" 
-                        value={geoCount} 
+                      <label className="block text-xs font-bold text-gray-400 uppercase mb-2">
+                        生成版本数量
+                      </label>
+                      <input
+                        type="range"
+                        min="1"
+                        max="5"
+                        step="1"
+                        value={geoCount}
                         onChange={(e) => setGeoCount(parseInt(e.target.value))}
                         className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
                       />
                       <div className="flex justify-between mt-2 text-xs font-bold text-gray-600">
                         <span>1 个版本</span>
-                        <span className="text-purple-600 bg-purple-50 px-2 py-0.5 rounded">{geoCount} 个版本</span>
+                        <span className="text-purple-600 bg-purple-50 px-2 py-0.5 rounded">
+                          {geoCount} 个版本
+                        </span>
                         <span>5 个版本</span>
                       </div>
                     </div>
 
                     <div className="flex gap-3 pt-2">
-                      <button 
+                      <button
                         onClick={() => setShowGeoConfig(false)}
                         className="flex-1 py-3 rounded-xl font-bold text-gray-500 hover:bg-gray-50 transition-all"
                       >
                         取消
                       </button>
-                      <button 
+                      <button
                         onClick={() => {
                           setShowGeoConfig(false);
-                          startSingleGeneration(product.id, selectedEngine, geoCount);
+                          startSingleGeneration(
+                            product.id,
+                            selectedEngine,
+                            geoCount
+                          );
                         }}
                         className="flex-1 py-3 rounded-xl font-bold bg-gradient-to-r from-purple-600 to-indigo-600 text-white hover:from-purple-700 hover:to-indigo-700 shadow-lg shadow-purple-200 transition-all"
                       >
@@ -1751,7 +1843,9 @@ const App = () => {
   const [generationProgress, setGenerationProgress] = useState(0);
   const [products, setProducts] = useState<Product[]>([]);
   const [models, setModels] = useState<LLMModel[]>([]);
-  const [generatingProductId, setGeneratingProductId] = useState<string | null>(null);
+  const [generatingProductId, setGeneratingProductId] = useState<string | null>(
+    null
+  );
 
   useEffect(() => {
     const fetchData = async () => {
@@ -1869,12 +1963,16 @@ const App = () => {
   };
 
   // 单个商品 GEO 生成
-  const startSingleGeneration = async (productId: string, modelId: string, count: number) => {
+  const startSingleGeneration = async (
+    productId: string,
+    modelId: string,
+    count: number
+  ) => {
     setIsGenerating(true);
     setGenerationProgress(0);
     setGeneratingProductId(productId);
 
-    const product = products.find(p => p.id === productId);
+    const product = products.find((p) => p.id === productId);
     if (!product) {
       setIsGenerating(false);
       setGeneratingProductId(null);
@@ -1895,36 +1993,40 @@ const App = () => {
     let completedTasks = 0;
     const results: any[] = Array(safeCount).fill(null);
 
-    const tasks: Array<() => Promise<void>> = selectedTypes.map((type, typeIndex) => async () => {
-      try {
-        const response = await fetch(`${API_BASE}/api/generate`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            productId: product.id,
-            copyType: type,
-            model: modelId,
-          }),
-        });
-        const data = await response.json();
+    const tasks: Array<() => Promise<void>> = selectedTypes.map(
+      (type, typeIndex) => async () => {
+        try {
+          const response = await fetch(`${API_BASE}/api/generate`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              productId: product.id,
+              copyType: type,
+              model: modelId,
+            }),
+          });
+          const data = await response.json();
 
-        if (data.content) {
-          results[typeIndex] = {
-            productName: product.name,
-            productType: product.category,
-            coreFunctions: [type],
-            targetAudience: [],
-            unsuitableScenarios: [],
-            keyConclusion: data.content,
-          };
+          if (data.content) {
+            results[typeIndex] = {
+              productName: product.name,
+              productType: product.category,
+              coreFunctions: [type],
+              targetAudience: [],
+              unsuitableScenarios: [],
+              keyConclusion: data.content,
+            };
+          }
+        } catch (error) {
+          console.error(`Failed to generate ${type} for ${product.id}:`, error);
+        } finally {
+          completedTasks++;
+          setGenerationProgress(
+            Math.floor((completedTasks / totalTasks) * 100)
+          );
         }
-      } catch (error) {
-        console.error(`Failed to generate ${type} for ${product.id}:`, error);
-      } finally {
-        completedTasks++;
-        setGenerationProgress(Math.floor((completedTasks / totalTasks) * 100));
       }
-    });
+    );
 
     // 并发执行
     const maxConcurrency = 3;
@@ -1944,11 +2046,13 @@ const App = () => {
 
     // 更新该商品的 geoOptimized
     const newGeoOptimized = results.filter(Boolean);
-    const updatedProducts = products.map(p => {
+    const updatedProducts = products.map((p) => {
       if (p.id === productId) {
         return {
           ...p,
-          geoOptimized: (newGeoOptimized.length ? newGeoOptimized : p.geoOptimized) as any,
+          geoOptimized: (newGeoOptimized.length
+            ? newGeoOptimized
+            : p.geoOptimized) as any,
         };
       }
       return p;
@@ -1976,60 +2080,102 @@ const App = () => {
       }}
     >
       <Router basename={import.meta.env.VITE_BASE_PATH || "/"}>
-        <div className={`min-h-screen font-sans transition-colors duration-500 ${isAiPerspective ? 'bg-black' : 'bg-white'}`}>
+        <div
+          className={`min-h-screen font-sans transition-colors duration-500 ${
+            isAiPerspective ? "bg-black" : "bg-white"
+          }`}
+        >
           {/* Navigation Bar - hidden in AI perspective */}
           {!isAiPerspective && (
-          <nav className="border-b sticky top-0 z-50 bg-white border-gray-100">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <div className="flex justify-between h-16 items-center">
-                <Link to="/" className="flex items-center space-x-2">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-indigo-600">
-                    <span className="text-white font-bold text-xl">G</span>
+            <nav className="border-b sticky top-0 z-50 bg-white border-gray-100">
+              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div className="flex justify-between h-16 items-center">
+                  <Link to="/" className="flex items-center space-x-2">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-indigo-600">
+                      <span className="text-white font-bold text-xl">G</span>
+                    </div>
+                    <span className="text-xl font-black tracking-tight text-gray-900">
+                      GEO<span className="text-indigo-600">MALL</span>
+                    </span>
+                  </Link>
+
+                  <div className="hidden md:flex items-center space-x-8">
+                    <Link
+                      to="/"
+                      className="text-sm font-medium text-gray-700 hover:text-indigo-600"
+                    >
+                      首页
+                    </Link>
+                    <a
+                      href="#"
+                      className="text-sm font-medium text-gray-500 hover:text-indigo-600"
+                    >
+                      新品
+                    </a>
+                    <a
+                      href="#"
+                      className="text-sm font-medium text-gray-500 hover:text-indigo-600"
+                    >
+                      限时特惠
+                    </a>
                   </div>
-                  <span className="text-xl font-black tracking-tight text-gray-900">
-                    GEO<span className="text-indigo-600">MALL</span>
-                  </span>
-                </Link>
 
-                <div className="hidden md:flex items-center space-x-8">
-                  <Link to="/" className="text-sm font-medium text-gray-700 hover:text-indigo-600">首页</Link>
-                  <a href="#" className="text-sm font-medium text-gray-500 hover:text-indigo-600">新品</a>
-                  <a href="#" className="text-sm font-medium text-gray-500 hover:text-indigo-600">限时特惠</a>
-                </div>
-
-                <div className="flex items-center space-x-4">
-                  <button className="p-2 text-gray-400 hover:text-gray-600">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                  </button>
-                  <button className="p-2 relative text-gray-400 hover:text-gray-600">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-                    </svg>
-                    <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 text-white text-[10px] flex items-center justify-center rounded-full">2</span>
-                  </button>
+                  <div className="flex items-center space-x-4">
+                    <button className="p-2 text-gray-400 hover:text-gray-600">
+                      <svg
+                        className="w-6 h-6"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                        />
+                      </svg>
+                    </button>
+                    <button className="p-2 relative text-gray-400 hover:text-gray-600">
+                      <svg
+                        className="w-6 h-6"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"
+                        />
+                      </svg>
+                      <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 text-white text-[10px] flex items-center justify-center rounded-full">
+                        2
+                      </span>
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          </nav>
+            </nav>
           )}
 
           <main>
             <Routes>
               <Route path="/" element={<HomePage />} />
               <Route path="/product/:id" element={<ProductDetailPage />} />
+              <Route path="/stream-test" element={<StreamTest />} />
             </Routes>
           </main>
 
           {!isAiPerspective && (
-          <footer className="border-t py-12 mt-20 transition-colors duration-500 bg-gray-50 border-gray-100">
-            <div className="max-w-7xl mx-auto px-4 text-center">
-              <p className="text-sm transition-colors text-gray-400">
-                © 2025 GEOMALL 演示平台 - 模拟真实电商交互体验
-              </p>
-            </div>
-          </footer>
+            <footer className="border-t py-12 mt-20 transition-colors duration-500 bg-gray-50 border-gray-100">
+              <div className="max-w-7xl mx-auto px-4 text-center">
+                <p className="text-sm transition-colors text-gray-400">
+                  © 2025 GEOMALL 演示平台 - 模拟真实电商交互体验
+                </p>
+              </div>
+            </footer>
           )}
 
           <GeoControlCenter />
