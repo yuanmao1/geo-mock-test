@@ -1,0 +1,79 @@
+# Nginx 反向代理配置示例
+# 用于将外部域名的 /public/ecommerce 路由转发到本应用
+#
+# 使用方法：
+# 1. 将此配置添加到你的 Nginx server 配置中
+# 2. 修改 upstream 地址为实际部署的 IP/域名
+# 3. 重启 Nginx: nginx -s reload
+
+# Upstream 定义 - 根据实际部署环境修改
+upstream geo_mock_web {
+    server 127.0.0.1:5173;  # Web 前端服务
+}
+
+upstream geo_mock_api {
+    server 127.0.0.1:3000;  # API 后端服务
+}
+
+# 在你的 server {} 块中添加以下 location 配置：
+
+# API 请求转发
+location /public/ecommerce/api/ {
+    rewrite ^/public/ecommerce/api/(.*)$ /api/$1 break;
+    proxy_pass http://geo_mock_api;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+# 前端页面转发
+location /public/ecommerce {
+    proxy_pass http://geo_mock_web;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    
+    # WebSocket 支持 (Vite HMR)
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+}
+
+# ============================================================
+# 完整 server 配置示例（供参考）
+# ============================================================
+#
+# server {
+#     listen 80;
+#     server_name your-domain.com;
+#
+#     # 其他网站的现有配置...
+#     location / {
+#         # 你的主站配置
+#     }
+#
+#     # GEO Mock 应用配置
+#     location /public/ecommerce/api/ {
+#         rewrite ^/public/ecommerce/api/(.*)$ /api/$1 break;
+#         proxy_pass http://geo_mock_api;
+#         proxy_http_version 1.1;
+#         proxy_set_header Host $host;
+#         proxy_set_header X-Real-IP $remote_addr;
+#         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+#         proxy_set_header X-Forwarded-Proto $scheme;
+#     }
+#
+#     location /public/ecommerce {
+#         proxy_pass http://geo_mock_web;
+#         proxy_http_version 1.1;
+#         proxy_set_header Host $host;
+#         proxy_set_header X-Real-IP $remote_addr;
+#         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+#         proxy_set_header X-Forwarded-Proto $scheme;
+#         proxy_set_header Upgrade $http_upgrade;
+#         proxy_set_header Connection "upgrade";
+#     }
+# }

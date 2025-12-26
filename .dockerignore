@@ -1,0 +1,24 @@
+# Dependencies - exclude local node_modules
+node_modules
+**/node_modules
+
+# Build artifacts
+public
+dist
+
+# Git
+.git
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Environment files (will be mounted separately)
+.env
+apps/web/.env
+
+# Docker
+docker/
+.dockerignore

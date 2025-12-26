@@ -13,9 +13,10 @@
     "dev:web": "bun run --cwd apps/web dev"
   },
   "dependencies": {
+    "@elysiajs/cors": "latest",
     "@geo/shared-types": "workspace:*",
-    "elysia": "latest",
-    "@elysiajs/cors": "latest"
+    "@sinclair/typebox": "^0.34.45",
+    "elysia": "latest"
   },
   "devDependencies": {
     "bun-types": "latest"
