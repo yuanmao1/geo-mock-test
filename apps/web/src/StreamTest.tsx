@@ -56,8 +56,10 @@ export default function StreamTest() {
             }
             try {
               const json = JSON.parse(data);
-              if (json.content) {
-                setOutput((prev) => prev + json.content);
+              // OpenAI 原始格式: choices[0].delta.content
+              const content = json.choices?.[0]?.delta?.content;
+              if (content) {
+                setOutput((prev) => prev + content);
               }
             } catch (e) {
               console.log("Parse error:", data);

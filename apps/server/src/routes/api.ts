@@ -72,7 +72,7 @@ export function registerApiRoutes(app: any) {
         const startedAt = performance.now();
 
         try {
-          // 流式响应
+          // 流式响应 - 直接透传原始 SSE
           if (stream) {
             const streamResponse = await requestChatCompletionStream(
               config,
@@ -80,44 +80,7 @@ export function registerApiRoutes(app: any) {
               prompt
             );
 
-            // 解析 OpenAI SSE 格式，提取 content
-            const decoder = new TextDecoder();
-            const encoder = new TextEncoder();
-            let buffer = "";
-
-            const parseStream = new TransformStream({
-              transform(chunk, controller) {
-                buffer += decoder.decode(chunk, { stream: true });
-                const lines = buffer.split("\n");
-                buffer = lines.pop() || "";
-
-                for (const line of lines) {
-                  if (line.startsWith("data: ")) {
-                    const data = line.slice(6).trim();
-                    if (data === "[DONE]") return;
-                    try {
-                      const json = JSON.parse(data);
-                      const content = json.choices?.[0]?.delta?.content;
-                      if (content) {
-                        controller.enqueue(
-                          encoder.encode(
-                            `data: ${JSON.stringify({ content })}\n\n`
-                          )
-                        );
-                      }
-                    } catch {
-                      // 解析失败，跳过
-                    }
-                  }
-                }
-              },
-              flush(controller) {
-                controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-              },
-            });
-
-            // 返回原生 Response 对象，Elysia 会正确处理
-            return new Response(streamResponse.pipeThrough(parseStream), {
+            return new Response(streamResponse, {
               headers: {
                 "Content-Type": "text/event-stream",
                 "Cache-Control": "no-cache",
