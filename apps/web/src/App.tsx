@@ -12,6 +12,7 @@ import {
   Link,
   useParams,
   useNavigate,
+  useLocation,
 } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -45,10 +46,12 @@ interface GeoContextType {
   setIsAiPerspective: (v: boolean) => void;
   isGenerating: boolean;
   startGeneration: (modelId: string, count: number) => void;
+  startSingleGeneration: (productId: string, modelId: string, count: number) => void;
   generationProgress: number;
   products: Product[];
   setProducts: (products: Product[]) => void;
   models: LLMModel[];
+  generatingProductId: string | null;
 }
 
 const GeoContext = createContext<GeoContextType | undefined>(undefined);
@@ -117,6 +120,67 @@ const generateStructuredText = (products: Product[]) => {
     lines.push(``);
   });
 
+  lines.push(`---END_PRODUCT_DATA---`);
+  lines.push(``);
+  lines.push(`# METADATA`);
+  lines.push(`SCHEMA_VERSION: 1.0`);
+  lines.push(`ENCODING: UTF-8`);
+  lines.push(`CONTENT_TYPE: text/plain; charset=utf-8`);
+  
+  return lines.join('\n');
+};
+
+// 生成单个商品的结构化纯文本
+const generateSingleProductText = (product: Product) => {
+  const timestamp = new Date().toISOString();
+  const lines: string[] = [
+    `# GEO-OPTIMIZED SINGLE PRODUCT DATA`,
+    `# Generated: ${timestamp}`,
+    `# Format: Structured Text for AI Consumption`,
+    ``,
+    `User-agent: *`,
+    `Allow: /api/products/${product.id}`,
+    `Allow: /api/generate`,
+    ``,
+    `---BEGIN_PRODUCT_DATA---`,
+    ``
+  ];
+
+  const geoList = Array.isArray(product.geoOptimized) ? product.geoOptimized : [product.geoOptimized];
+  
+  lines.push(`[PRODUCT]`);
+  lines.push(`ID: ${product.id}`);
+  lines.push(`NAME: ${product.name}`);
+  lines.push(`CATEGORY: ${product.category}`);
+  lines.push(`PRICE: ${product.price}`);
+  lines.push(`ORIGINAL_PRICE: ${product.originalPrice || 'N/A'}`);
+  lines.push(`RATING: ${product.rating}`);
+  lines.push(`REVIEW_COUNT: ${product.reviewCount}`);
+  lines.push(`IMAGE_URL: ${product.image}`);
+  lines.push(`DESCRIPTION: ${product.humanReadable?.description || 'N/A'}`);
+  lines.push(``);
+  
+  lines.push(`GEO_VERSIONS_COUNT: ${geoList.length}`);
+  lines.push(``);
+  
+  geoList.forEach((geo, geoIndex) => {
+    lines.push(`  [GEO_VERSION_${geoIndex + 1}]`);
+    lines.push(`  PRODUCT_NAME: ${geo.productName || 'N/A'}`);
+    lines.push(`  PRODUCT_TYPE: ${geo.productType || 'N/A'}`);
+    lines.push(`  CORE_FUNCTIONS: ${geo.coreFunctions?.join(', ') || 'N/A'}`);
+    lines.push(`  TARGET_AUDIENCE: ${geo.targetAudience?.join(', ') || 'N/A'}`);
+    lines.push(`  UNSUITABLE_SCENARIOS: ${geo.unsuitableScenarios?.join(', ') || 'N/A'}`);
+    lines.push(`  KEY_CONCLUSION:`);
+    const conclusion = stripOuterMarkdownFence(geo.keyConclusion || 'N/A');
+    conclusion.split('\n').forEach(line => {
+      lines.push(`    | ${line}`);
+    });
+    lines.push(`  [/GEO_VERSION_${geoIndex + 1}]`);
+    lines.push(``);
+  });
+  
+  lines.push(`[/PRODUCT]`);
+  lines.push(``);
   lines.push(`---END_PRODUCT_DATA---`);
   lines.push(``);
   lines.push(`# METADATA`);
@@ -648,20 +712,29 @@ const GeoModal = ({
 // --- GEO Control Center ---
 
 const GeoControlCenter = () => {
+  const location = useLocation();
   const {
     isAiPerspective,
     setIsAiPerspective,
     startGeneration,
+    startSingleGeneration,
     isGenerating,
     generationProgress,
     products,
     models,
+    generatingProductId,
   } = useGeo();
   const [isOpen, setIsOpen] = useState(false);
   const [engine, setEngine] = useState(models[0]?.id || "gpt-4o");
   const [count, setCount] = useState(1);
 
-  if (isGenerating) {
+  // 检测是否在商品详情页
+  const productMatch = location.pathname.match(/^\/product\/(.+)$/);
+  const currentProductId = productMatch ? productMatch[1] : null;
+  const currentProduct = currentProductId ? products.find(p => p.id === currentProductId) : null;
+
+  // 只有全量生成时才显示全局进度弹窗（generatingProductId 为 null 时表示全量生成）
+  if (isGenerating && !generatingProductId) {
     return (
       <div className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
         <div className="max-w-md w-full bg-slate-900 border border-indigo-500/30 rounded-2xl p-8 text-center shadow-2xl shadow-indigo-500/20">
@@ -753,10 +826,13 @@ const GeoControlCenter = () => {
                     d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
                   />
                 </svg>
-                GEO 优化配置
+                {currentProduct ? '单商品 GEO 优化' : 'GEO 优化配置'}
               </h3>
               <p className="text-slate-400 text-xs mt-1">
-                配置 AI 引擎以生成强结构化内容
+                {currentProduct 
+                  ? `为「${currentProduct.name}」生成 AI 优化内容`
+                  : `配置 AI 引擎以生成强结构化内容`
+                }
               </p>
             </div>
 
@@ -814,7 +890,13 @@ const GeoControlCenter = () => {
                 <button
                   onClick={() => {
                     setIsOpen(false);
-                    startGeneration(engine, count);
+                    if (currentProduct) {
+                      // 商品详情页：只生成当前商品
+                      startSingleGeneration(currentProduct.id, engine, count);
+                    } else {
+                      // 首页：生成所有商品
+                      startGeneration(engine, count);
+                    }
                   }}
                   className="flex-1 py-3 rounded-xl font-bold bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all"
                 >
@@ -913,9 +995,15 @@ const HomePage = () => {
 const ProductDetailPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { isAiPerspective, products } = useGeo();
+  const { isAiPerspective, products, models, startSingleGeneration, isGenerating, generationProgress, generatingProductId } = useGeo();
   const [geoPageIndex, setGeoPageIndex] = useState(0);
   const [activeTab, setActiveTab] = useState<"details" | "reviews">("details");
+  const [showGeoConfig, setShowGeoConfig] = useState(false);
+  const [selectedEngine, setSelectedEngine] = useState(models[0]?.id || "gpt-4o");
+  const [geoCount, setGeoCount] = useState(1);
+
+  // 当前商品正在生成中
+  const isCurrentProductGenerating = isGenerating && generatingProductId === id;
 
   const uniqueProducts = useMemo(
     () => dedupeProductsById(products),
@@ -939,6 +1027,124 @@ const ProductDetailPage = () => {
     : [product.geoOptimized];
   const currentGeo = geoList[geoPageIndex % geoList.length];
 
+  // AI 视角下显示纯文本
+  if (isAiPerspective) {
+    const structuredText = generateSingleProductText(product);
+    return (
+      <div className="min-h-screen bg-black text-green-400 font-mono p-4">
+        {/* 退出按钮 */}
+        <div className="fixed top-4 right-4 z-50">
+          <button
+            onClick={() => navigate(-1)}
+            className="bg-slate-800 text-green-400 px-4 py-2 rounded text-sm hover:bg-slate-700 transition-all mr-2 border border-green-500/30"
+          >
+            ← 返回
+          </button>
+        </div>
+
+        {/* 单商品生成进度 */}
+        {isCurrentProductGenerating && (
+          <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center">
+            <div className="text-center">
+              <div className="mb-4 text-green-400 text-2xl font-mono">
+                [{generationProgress}%]
+              </div>
+              <div className="text-green-500 text-sm">
+                GENERATING GEO CONTENT FOR: {product.name}
+              </div>
+              <div className="mt-4 w-64 h-2 bg-slate-800 rounded">
+                <div 
+                  className="h-full bg-green-500 rounded transition-all duration-300"
+                  style={{ width: `${generationProgress}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 纯文本内容 */}
+        <pre className="whitespace-pre-wrap break-words text-sm leading-relaxed pt-12">
+          {structuredText}
+        </pre>
+
+        {/* 底部生成按钮 */}
+        <div className="fixed bottom-4 left-4 right-4 flex gap-2">
+          <button
+            onClick={() => setShowGeoConfig(true)}
+            disabled={isCurrentProductGenerating}
+            className={`flex-1 py-3 rounded text-sm font-mono border transition-all ${
+              isCurrentProductGenerating
+                ? "bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed"
+                : "bg-slate-900 text-green-400 border-green-500/50 hover:bg-slate-800"
+            }`}
+          >
+            {isCurrentProductGenerating 
+              ? `[GENERATING... ${generationProgress}%]`
+              : "[REGENERATE_GEO_CONTENT]"
+            }
+          </button>
+        </div>
+
+        {/* GEO Config Modal */}
+        {showGeoConfig && (
+          <div className="fixed inset-0 z-[200] bg-black/90 flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-green-500/30 rounded-lg max-w-sm w-full p-6 font-mono">
+              <h3 className="text-green-400 text-lg mb-4"># CONFIGURE_GEO_GENERATION</h3>
+              
+              <div className="mb-4">
+                <label className="block text-green-500/60 text-xs mb-2">MODEL_ID:</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {models.map(m => (
+                    <button
+                      key={m.id}
+                      onClick={() => setSelectedEngine(m.id)}
+                      className={`px-3 py-2 text-xs border rounded transition-all ${
+                        selectedEngine === m.id 
+                          ? "border-green-500 text-green-400 bg-green-500/10" 
+                          : "border-slate-700 text-slate-400 hover:border-slate-600"
+                      }`}
+                    >
+                      {m.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mb-6">
+                <label className="block text-green-500/60 text-xs mb-2">VERSION_COUNT: {geoCount}</label>
+                <input 
+                  type="range" min="1" max="5" step="1" 
+                  value={geoCount} 
+                  onChange={(e) => setGeoCount(parseInt(e.target.value))}
+                  className="w-full accent-green-500"
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => setShowGeoConfig(false)}
+                  className="flex-1 py-2 text-sm border border-slate-700 text-slate-400 rounded hover:bg-slate-800 transition-all"
+                >
+                  [CANCEL]
+                </button>
+                <button 
+                  onClick={() => {
+                    setShowGeoConfig(false);
+                    startSingleGeneration(product.id, selectedEngine, geoCount);
+                  }}
+                  className="flex-1 py-2 text-sm border border-green-500 text-green-400 rounded hover:bg-green-500/10 transition-all"
+                >
+                  [EXECUTE]
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // 普通视角
   return (
     <div
       className={`min-h-screen transition-colors duration-500 ${
@@ -1170,42 +1376,129 @@ const ProductDetailPage = () => {
 
             <div className="flex gap-4 mt-auto pt-8">
               <button
-                className={`flex-1 py-4 rounded-xl font-bold transition-all shadow-lg ${
-                  isAiPerspective
-                    ? "bg-indigo-600 text-white hover:bg-indigo-500 shadow-indigo-500/20"
-                    : "bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200"
-                }`}
+                className="flex-1 py-4 rounded-xl font-bold transition-all shadow-lg bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200"
               >
-                {isAiPerspective ? "EXECUTE_PURCHASE" : "立即购买"}
+                立即购买
               </button>
               <button
-                className={`flex-1 border-2 py-4 rounded-xl font-bold transition-all ${
-                  isAiPerspective
-                    ? "border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/10"
-                    : "border-gray-200 text-gray-900 hover:bg-gray-50"
-                }`}
+                className="flex-1 border-2 py-4 rounded-xl font-bold transition-all border-gray-200 text-gray-900 hover:bg-gray-50"
               >
-                {isAiPerspective ? "ADD_TO_BUFFER" : "加入购物车"}
+                加入购物车
               </button>
             </div>
+
+            {/* GEO Generation Button */}
+            <div className="mt-4">
+              <button
+                onClick={() => setShowGeoConfig(true)}
+                disabled={isCurrentProductGenerating}
+                className={`w-full py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${
+                  isCurrentProductGenerating
+                    ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                    : "bg-gradient-to-r from-purple-600 to-indigo-600 text-white hover:from-purple-700 hover:to-indigo-700 shadow-lg shadow-purple-200"
+                }`}
+              >
+                {isCurrentProductGenerating ? (
+                  <>
+                    <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>正在生成 GEO 内容... {generationProgress}%</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    <span>为此商品生成 GEO 优化内容</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* GEO Config Modal for Single Product */}
+            {showGeoConfig && (
+              <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+                <div className="bg-white rounded-3xl max-w-sm w-full overflow-hidden shadow-2xl animate-fadeIn">
+                  <div className="bg-gradient-to-r from-purple-600 to-indigo-600 p-6 text-white">
+                    <h3 className="text-xl font-bold flex items-center">
+                      <svg className="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                      单商品 GEO 优化
+                    </h3>
+                    <p className="text-purple-100 text-xs mt-1">为「{product.name}」生成 AI 优化内容</p>
+                  </div>
+                  
+                  <div className="p-6 space-y-6">
+                    <div>
+                      <label className="block text-xs font-bold text-gray-400 uppercase mb-2">选择 AI 引擎</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {models.map(m => (
+                          <button
+                            key={m.id}
+                            onClick={() => setSelectedEngine(m.id)}
+                            className={`px-3 py-2 rounded-xl text-sm font-medium border-2 transition-all ${
+                              selectedEngine === m.id 
+                                ? "border-purple-600 bg-purple-50 text-purple-600" 
+                                : "border-gray-100 text-gray-500 hover:border-gray-200"
+                            }`}
+                          >
+                            {m.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-gray-400 uppercase mb-2">生成版本数量</label>
+                      <input 
+                        type="range" min="1" max="5" step="1" 
+                        value={geoCount} 
+                        onChange={(e) => setGeoCount(parseInt(e.target.value))}
+                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
+                      />
+                      <div className="flex justify-between mt-2 text-xs font-bold text-gray-600">
+                        <span>1 个版本</span>
+                        <span className="text-purple-600 bg-purple-50 px-2 py-0.5 rounded">{geoCount} 个版本</span>
+                        <span>5 个版本</span>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3 pt-2">
+                      <button 
+                        onClick={() => setShowGeoConfig(false)}
+                        className="flex-1 py-3 rounded-xl font-bold text-gray-500 hover:bg-gray-50 transition-all"
+                      >
+                        取消
+                      </button>
+                      <button 
+                        onClick={() => {
+                          setShowGeoConfig(false);
+                          startSingleGeneration(product.id, selectedEngine, geoCount);
+                        }}
+                        className="flex-1 py-3 rounded-xl font-bold bg-gradient-to-r from-purple-600 to-indigo-600 text-white hover:from-purple-700 hover:to-indigo-700 shadow-lg shadow-purple-200 transition-all"
+                      >
+                        开始生成
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Tabs Section */}
         <div className="mt-20">
-          <div
-            className={`border-b ${
-              isAiPerspective ? "border-indigo-500/20" : "border-gray-200"
-            }`}
-          >
+          <div className="border-b border-gray-200">
             <nav className="flex space-x-8">
               <button
                 onClick={() => setActiveTab("details")}
                 className={`py-4 px-1 text-sm font-bold border-b-2 ${
                   activeTab === "details"
-                    ? isAiPerspective
-                      ? "border-indigo-500 text-indigo-400"
-                      : "border-indigo-600 text-indigo-600"
+                    ? "border-indigo-600 text-indigo-600"
                     : "border-transparent"
                 }`}
               >
@@ -1458,6 +1751,7 @@ const App = () => {
   const [generationProgress, setGenerationProgress] = useState(0);
   const [products, setProducts] = useState<Product[]>([]);
   const [models, setModels] = useState<LLMModel[]>([]);
+  const [generatingProductId, setGeneratingProductId] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -1574,6 +1868,98 @@ const App = () => {
     setIsAiPerspective(true);
   };
 
+  // 单个商品 GEO 生成
+  const startSingleGeneration = async (productId: string, modelId: string, count: number) => {
+    setIsGenerating(true);
+    setGenerationProgress(0);
+    setGeneratingProductId(productId);
+
+    const product = products.find(p => p.id === productId);
+    if (!product) {
+      setIsGenerating(false);
+      setGeneratingProductId(null);
+      return;
+    }
+
+    const allCopyTypes: GeoCopyType[] = [
+      "definition",
+      "problem",
+      "comparison",
+      "mechanism",
+      "boundary",
+    ];
+    const safeCount = Math.max(1, Math.min(count, allCopyTypes.length));
+    const selectedTypes = shuffle(allCopyTypes).slice(0, safeCount);
+
+    const totalTasks = safeCount;
+    let completedTasks = 0;
+    const results: any[] = Array(safeCount).fill(null);
+
+    const tasks: Array<() => Promise<void>> = selectedTypes.map((type, typeIndex) => async () => {
+      try {
+        const response = await fetch(`${API_BASE}/api/generate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            productId: product.id,
+            copyType: type,
+            model: modelId,
+          }),
+        });
+        const data = await response.json();
+
+        if (data.content) {
+          results[typeIndex] = {
+            productName: product.name,
+            productType: product.category,
+            coreFunctions: [type],
+            targetAudience: [],
+            unsuitableScenarios: [],
+            keyConclusion: data.content,
+          };
+        }
+      } catch (error) {
+        console.error(`Failed to generate ${type} for ${product.id}:`, error);
+      } finally {
+        completedTasks++;
+        setGenerationProgress(Math.floor((completedTasks / totalTasks) * 100));
+      }
+    });
+
+    // 并发执行
+    const maxConcurrency = 3;
+    let nextTaskIndex = 0;
+    const workers = Array.from(
+      { length: Math.min(maxConcurrency, tasks.length) },
+      async () => {
+        while (true) {
+          const current = nextTaskIndex++;
+          if (current >= tasks.length) break;
+          await tasks[current]();
+        }
+      }
+    );
+
+    await Promise.all(workers);
+
+    // 更新该商品的 geoOptimized
+    const newGeoOptimized = results.filter(Boolean);
+    const updatedProducts = products.map(p => {
+      if (p.id === productId) {
+        return {
+          ...p,
+          geoOptimized: (newGeoOptimized.length ? newGeoOptimized : p.geoOptimized) as any,
+        };
+      }
+      return p;
+    });
+
+    setProducts(dedupeProductsById(updatedProducts));
+    setIsGenerating(false);
+    setGeneratingProductId(null);
+    setIsAiPerspective(true);
+  };
+
   return (
     <GeoContext.Provider
       value={{
@@ -1581,10 +1967,12 @@ const App = () => {
         setIsAiPerspective,
         isGenerating,
         startGeneration,
+        startSingleGeneration,
         generationProgress,
         products,
         setProducts,
         models,
+        generatingProductId,
       }}
     >
       <Router basename={import.meta.env.VITE_BASE_PATH || "/"}>
