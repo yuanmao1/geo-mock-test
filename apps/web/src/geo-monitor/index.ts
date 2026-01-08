@@ -4,3 +4,4 @@ export { default as Sidebar } from './components/Sidebar';
 export { Icons } from './components/Icons';
 export * from './components/ui';
 export * from './styles/theme';
+export { mockService } from './services/mockService';

@@ -13,6 +13,7 @@ services:
     depends_on:
       - server
       - web
+      - gpt-interaction
 
   # API Server - handles /api/* requests
   server:
@@ -29,6 +30,13 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
+      # GPT Interaction 服务配置 (内部网络)
+      - GPT_INTERACTION_BASE_URL=http://gpt-interaction:8000
+      - GPT_INTERACTION_API_PREFIX=/api/v1
+      - WEBHOOK_BASE_URL=http://server:3000
+    depends_on:
+      - gpt-interaction
+      - postgres
     command: ["bun", "run", "start"]
 
   # Web Frontend - serves the React app
@@ -48,3 +56,73 @@ services:
       - VITE_API_TARGET=
       - VITE_BASE_PATH=/public/ecommerce
     command: ["bun", "run", "dev:web", "--", "--host", "0.0.0.0"]
+
+  # GPT Interaction Service - ChatGPT浏览器自动化
+  gpt-interaction:
+    build:
+      context: ../apps/gpt-interaction
+      dockerfile: Dockerfile
+    container_name: geo-mock-gpt-interaction
+    restart: unless-stopped
+    expose:
+      - "8000"
+    env_file:
+      - .env
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - DEBUG=${GPT_DEBUG:-false}
+      # 数据库配置
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${POSTGRES_USER:-postgres}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - DB_NAME=${GPT_DB_NAME:-gpt_interaction}
+      # 浏览器配置
+      - BROWSER_HEADLESS=true
+      - BROWSER_USER_DATA_BASE_PATH=/app/user_data
+      - BROWSER_NEW_CHAT_PER_TASK=true
+      - ENABLE_XVFB=1
+      # OpenAI 凭据 (可选，用于自动登录)
+      - OPENAI_EMAIL=${OPENAI_EMAIL:-}
+      - OPENAI_PASSWORD=${OPENAI_PASSWORD:-}
+      # 任务配置
+      - TASK_TIMEOUT_SECONDS=${TASK_TIMEOUT_SECONDS:-300}
+      - MAX_CONCURRENT_TASKS=${MAX_CONCURRENT_TASKS:-3}
+      - MAX_CONCURRENT_TASKS_PER_USER=${MAX_CONCURRENT_TASKS_PER_USER:-1}
+      # Webhook 配置
+      - WEBHOOK_TIMEOUT_SECONDS=30
+      - WEBHOOK_MAX_RETRIES=3
+    volumes:
+      - gpt_user_data:/app/user_data
+      - gpt_logs:/app/logs
+    shm_size: "2gb"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - postgres
+
+  # PostgreSQL 数据库 - 共享数据库服务
+  postgres:
+    image: postgres:17-alpine
+    container_name: geo-mock-postgres
+    restart: unless-stopped
+    expose:
+      - "5432"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-geo_mock}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  gpt_user_data:
+  gpt_logs:

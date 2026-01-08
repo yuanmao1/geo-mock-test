@@ -2,14 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { COLORS, RADIUS } from '../styles/theme';
 import { Card, Button, StatusBadge, Tabs, EmptyState, Spinner } from '../components/ui';
 import { Icons } from '../components/Icons';
+import { mockService } from '../services/mockService';
 
 const API_PREFIX = (import.meta as any).env?.VITE_API_PREFIX || "/api";
 
 interface HistoryPageProps {
   onViewResult: (runId: string, data?: any, type?: 'category' | 'brand-duel') => void;
+  mockMode?: boolean;
 }
 
-const HistoryPage: React.FC<HistoryPageProps> = ({ onViewResult }) => {
+const HistoryPage: React.FC<HistoryPageProps> = ({ onViewResult, mockMode = false }) => {
   const [activeTab, setActiveTab] = useState<'category' | 'brand-duel'>('category');
   const [categoryRuns, setCategoryRuns] = useState<any[]>([]);
   const [brandDuelRuns, setBrandDuelRuns] = useState<any[]>([]);
@@ -20,10 +22,29 @@ const HistoryPage: React.FC<HistoryPageProps> = ({ onViewResult }) => {
 
   useEffect(() => {
     fetchData();
-  }, [activeTab, page]);
+  }, [activeTab, page, mockMode]);
 
   const fetchData = async () => {
     setLoading(true);
+    
+    // Mock模式：返回模拟数据
+    if (mockMode) {
+      if (activeTab === 'category') {
+        const mockHistory = mockService.getMockHistory();
+        setCategoryRuns(mockHistory);
+        setTotal(mockHistory.length);
+      } else {
+        setBrandDuelRuns([
+          { id: 'mock-duel-1', brand_a: '格力', brand_b: '美的', category: '空调', status: 'completed', created_at: new Date(Date.now() - 86400000).toISOString() },
+          { id: 'mock-duel-2', brand_a: 'Sony', brand_b: 'Bose', category: '耳机', status: 'completed', created_at: new Date(Date.now() - 172800000).toISOString() },
+        ]);
+        setTotal(2);
+      }
+      setLoading(false);
+      return;
+    }
+    
+    // 真实模式
     try {
       if (activeTab === 'category') {
         const res = await fetch(`${API_PREFIX}/pipelines/category?page=${page}&page_size=${pageSize}`);

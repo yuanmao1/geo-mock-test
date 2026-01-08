@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { COLORS, RADIUS } from '../styles/theme';
 import { Card, Button, Input, StatusBadge, ProgressBar, EmptyState, Spinner } from '../components/ui';
 import { Icons } from '../components/Icons';
+import { mockService } from '../services/mockService';
 
 const API_PREFIX = (import.meta as any).env?.VITE_API_PREFIX || "/api";
 
 interface MonitorCenterProps {
   onViewResult: (runId: string, data?: any) => void;
+  mockMode?: boolean;
 }
 
 interface QueryItem {
@@ -16,7 +18,7 @@ interface QueryItem {
   response_text?: string;
 }
 
-const MonitorCenter: React.FC<MonitorCenterProps> = ({ onViewResult }) => {
+const MonitorCenter: React.FC<MonitorCenterProps> = ({ onViewResult, mockMode = false }) => {
   const [category, setCategory] = useState('');
   const [isRunning, setIsRunning] = useState(false);
   const [currentRunId, setCurrentRunId] = useState<string | null>(null);
@@ -28,9 +30,13 @@ const MonitorCenter: React.FC<MonitorCenterProps> = ({ onViewResult }) => {
   // 获取最近运行记录
   useEffect(() => {
     fetchRecentRuns();
-  }, []);
+  }, [mockMode]);
 
   const fetchRecentRuns = async () => {
+    if (mockMode) {
+      setRecentRuns(mockService.getMockHistory());
+      return;
+    }
     try {
       const res = await fetch(`${API_PREFIX}/pipelines/category?page_size=5`);
       const data = await res.json();
@@ -56,6 +62,23 @@ const MonitorCenter: React.FC<MonitorCenterProps> = ({ onViewResult }) => {
     setLogs([]);
     addLog('正在提交任务...');
 
+    // Mock模式：使用模拟数据
+    if (mockMode) {
+      addLog('⚡ Mock模式 - 快速演示流程');
+      await mockService.simulateCategoryPipeline(category.trim(), {
+        onQueryUpdate: setQueries,
+        onLog: addLog,
+        onProgress: setProgress,
+        onComplete: (result) => {
+          setIsRunning(false);
+          fetchRecentRuns();
+          onViewResult(result.id, result);
+        },
+      });
+      return;
+    }
+
+    // 真实模式：调用API
     try {
       const res = await fetch(`${API_PREFIX}/pipelines/category`, {
         method: 'POST',
@@ -132,20 +155,40 @@ const MonitorCenter: React.FC<MonitorCenterProps> = ({ onViewResult }) => {
     <div className="animate-fadeIn">
       {/* Header */}
       <div style={{ marginBottom: '32px' }}>
-        <h1 style={{
-          fontSize: '28px',
-          fontWeight: 700,
-          color: COLORS.textPrimary,
-          marginBottom: '8px',
-        }}>
-          实时监测中心
-        </h1>
-        <p style={{
-          fontSize: '14px',
-          color: COLORS.textSecondary,
-        }}>
-          输入品类关键词，自动生成多维度查询并分析品牌在AI搜索中的表现
-        </p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <h1 style={{
+              fontSize: '28px',
+              fontWeight: 700,
+              color: COLORS.textPrimary,
+              marginBottom: '8px',
+            }}>
+              实时监测中心
+            </h1>
+            <p style={{
+              fontSize: '14px',
+              color: COLORS.textSecondary,
+            }}>
+              输入品类关键词，自动生成多维度查询并分析品牌在AI搜索中的表现
+            </p>
+          </div>
+          {mockMode && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 16px',
+              background: 'linear-gradient(135deg, #F59E0B20, #F97316 20)',
+              borderRadius: RADIUS.lg,
+              border: '1px solid #F59E0B40',
+            }}>
+              <span style={{ fontSize: '14px' }}>⚡</span>
+              <span style={{ fontSize: '13px', fontWeight: 500, color: '#F59E0B' }}>
+                Mock演示模式
+              </span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Main Content */}

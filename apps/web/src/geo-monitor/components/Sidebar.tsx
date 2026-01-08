@@ -5,6 +5,8 @@ import { Icons } from './Icons';
 interface SidebarProps {
   activeTab: string;
   onTabChange: (tab: string) => void;
+  mockMode?: boolean;
+  onMockModeChange?: (enabled: boolean) => void;
 }
 
 interface NavItem {
@@ -21,7 +23,7 @@ const navItems: NavItem[] = [
   { id: 'gpt-demo', label: 'GPT演示', icon: <Icons.Robot /> },
 ];
 
-const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange }) => {
+const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, mockMode = false, onMockModeChange }) => {
   return (
     <aside style={{
       width: '260px',
@@ -153,6 +155,72 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange }) => {
           borderTop: `1px solid ${COLORS.borderLight}`,
         }} />
 
+        {/* Mock Mode Toggle */}
+        <div style={{
+          padding: '12px',
+          margin: '0 4px 16px',
+          background: mockMode 
+            ? 'linear-gradient(135deg, #F59E0B15, #F9731615)' 
+            : COLORS.bgSecondary,
+          borderRadius: RADIUS.md,
+          border: mockMode ? '1px solid #F59E0B30' : `1px solid ${COLORS.borderLight}`,
+        }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: '8px',
+          }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}>
+              <span style={{ fontSize: '14px' }}>⚡</span>
+              <span style={{
+                fontSize: '13px',
+                fontWeight: 500,
+                color: mockMode ? '#F59E0B' : COLORS.textSecondary,
+              }}>
+                Mock模式
+              </span>
+            </div>
+            <button
+              onClick={() => onMockModeChange?.(!mockMode)}
+              style={{
+                width: '40px',
+                height: '22px',
+                borderRadius: '11px',
+                border: 'none',
+                background: mockMode ? '#F59E0B' : COLORS.border,
+                cursor: 'pointer',
+                position: 'relative',
+                transition: 'all 0.2s ease',
+              }}
+            >
+              <span style={{
+                position: 'absolute',
+                top: '3px',
+                left: mockMode ? '21px' : '3px',
+                width: '16px',
+                height: '16px',
+                borderRadius: '50%',
+                background: 'white',
+                transition: 'all 0.2s ease',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+              }} />
+            </button>
+          </div>
+          <p style={{
+            fontSize: '11px',
+            color: COLORS.textMuted,
+            margin: 0,
+            lineHeight: 1.4,
+          }}>
+            {mockMode ? '使用模拟数据快速演示' : '开启后使用模拟数据'}
+          </p>
+        </div>
+
         <p style={{
           fontSize: '11px',
           fontWeight: 600,
@@ -209,7 +277,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange }) => {
               width: '8px',
               height: '8px',
               borderRadius: '50%',
-              background: COLORS.accent,
+              background: mockMode ? '#F59E0B' : COLORS.accent,
               animation: 'pulse 2s infinite',
             }} />
             <span style={{
@@ -217,7 +285,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange }) => {
               fontWeight: 500,
               color: COLORS.textPrimary,
             }}>
-              系统运行正常
+              {mockMode ? 'Mock演示中' : '系统运行正常'}
             </span>
           </div>
           <p style={{
@@ -225,7 +293,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange }) => {
             color: COLORS.textMuted,
             margin: 0,
           }}>
-            GPT服务已连接 · API v1.0
+            {mockMode ? '使用模拟数据 · 无需网络' : 'GPT服务已连接 · API v1.0'}
           </p>
         </div>
       </div>

@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { COLORS, RADIUS } from '../styles/theme';
 import { Card, Button, Input, StatusBadge, Spinner, EmptyState } from '../components/ui';
 import { Icons } from '../components/Icons';
+import { mockService } from '../services/mockService';
 
 const API_PREFIX = (import.meta as any).env?.VITE_API_PREFIX || "/api";
 
 interface BrandDuelProps {
   onViewResult: (runId: string, data?: any) => void;
+  mockMode?: boolean;
 }
 
 interface DuelRound {
@@ -23,7 +25,7 @@ interface DuelResult {
   rounds: DuelRound[];
 }
 
-const BrandDuel: React.FC<BrandDuelProps> = ({ onViewResult }) => {
+const BrandDuel: React.FC<BrandDuelProps> = ({ onViewResult, mockMode = false }) => {
   const [brandA, setBrandA] = useState('');
   const [brandB, setBrandB] = useState('');
   const [category, setCategory] = useState('');
@@ -32,12 +34,27 @@ const BrandDuel: React.FC<BrandDuelProps> = ({ onViewResult }) => {
   const [result, setResult] = useState<DuelResult | null>(null);
   const [queries, setQueries] = useState<any[]>([]);
   const [recentDuels, setRecentDuels] = useState<any[]>([]);
+  const [logs, setLogs] = useState<string[]>([]);
+  const [progress, setProgress] = useState(0);
 
   useEffect(() => {
     fetchRecentDuels();
-  }, []);
+  }, [mockMode]);
+
+  const addLog = (message: string) => {
+    const timestamp = new Date().toLocaleTimeString('zh-CN');
+    setLogs(prev => [...prev, `[${timestamp}] ${message}`]);
+  };
 
   const fetchRecentDuels = async () => {
+    if (mockMode) {
+      // Mock模式下返回模拟历史记录
+      setRecentDuels([
+        { id: 'mock-duel-1', brand_a: '格力', brand_b: '美的', category: '空调', status: 'completed', created_at: new Date(Date.now() - 86400000).toISOString() },
+        { id: 'mock-duel-2', brand_a: 'Sony', brand_b: 'Bose', category: '耳机', status: 'completed', created_at: new Date(Date.now() - 172800000).toISOString() },
+      ]);
+      return;
+    }
     try {
       const res = await fetch(`${API_PREFIX}/pipelines/brand-duel?page_size=5`);
       const data = await res.json();
@@ -55,7 +72,28 @@ const BrandDuel: React.FC<BrandDuelProps> = ({ onViewResult }) => {
     setIsRunning(true);
     setResult(null);
     setQueries([]);
+    setLogs([]);
+    setProgress(0);
 
+    // Mock模式：使用模拟数据
+    if (mockMode) {
+      addLog('⚡ Mock模式 - 快速演示品牌对决流程');
+      await mockService.simulateBrandDuel(brandA.trim(), brandB.trim(), category.trim(), {
+        onQueryUpdate: setQueries,
+        onLog: addLog,
+        onProgress: setProgress,
+        onComplete: (data) => {
+          setIsRunning(false);
+          if (data.analysis_result) {
+            setResult(data.analysis_result);
+          }
+          fetchRecentDuels();
+        },
+      });
+      return;
+    }
+
+    // 真实模式：调用API
     try {
       const res = await fetch(`${API_PREFIX}/pipelines/brand-duel`, {
         method: 'POST',
@@ -125,20 +163,40 @@ const BrandDuel: React.FC<BrandDuelProps> = ({ onViewResult }) => {
     <div className="animate-fadeIn">
       {/* Header */}
       <div style={{ marginBottom: '32px' }}>
-        <h1 style={{
-          fontSize: '28px',
-          fontWeight: 700,
-          color: COLORS.textPrimary,
-          marginBottom: '8px',
-        }}>
-          品牌对抗分析
-        </h1>
-        <p style={{
-          fontSize: '14px',
-          color: COLORS.textSecondary,
-        }}>
-          对比两个品牌在AI搜索中的表现，获得多维度竞争分析
-        </p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <h1 style={{
+              fontSize: '28px',
+              fontWeight: 700,
+              color: COLORS.textPrimary,
+              marginBottom: '8px',
+            }}>
+              品牌对抗分析
+            </h1>
+            <p style={{
+              fontSize: '14px',
+              color: COLORS.textSecondary,
+            }}>
+              对比两个品牌在AI搜索中的表现，获得多维度竞争分析
+            </p>
+          </div>
+          {mockMode && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 16px',
+              background: 'linear-gradient(135deg, #F59E0B20, #F9731620)',
+              borderRadius: RADIUS.lg,
+              border: '1px solid #F59E0B40',
+            }}>
+              <span style={{ fontSize: '14px' }}>⚡</span>
+              <span style={{ fontSize: '13px', fontWeight: 500, color: '#F59E0B' }}>
+                Mock演示模式
+              </span>
+            </div>
+          )}
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>

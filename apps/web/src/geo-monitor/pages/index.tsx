@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Sidebar from '../components/Sidebar';
 import MonitorCenter from './MonitorCenter';
 import BrandDuel from './BrandDuel';
 import HistoryPage from './HistoryPage';
 import GptDemo from './GptDemo';
 import AnalysisDashboard from './AnalysisDashboard';
-import { COLORS } from '../styles/theme';
+import { COLORS, RADIUS } from '../styles/theme';
+import { mockService } from '../services/mockService';
 import '../styles/index.css';
 
 type TabType = 'monitor' | 'brand-duel' | 'history' | 'gpt-demo' | 'settings';
@@ -20,6 +21,12 @@ interface ViewState {
 const GeoMonitorApp: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('monitor');
   const [viewState, setViewState] = useState<ViewState>({ type: 'list' });
+  const [mockMode, setMockMode] = useState(() => mockService.getMockMode());
+
+  // 同步Mock模式状态到localStorage
+  useEffect(() => {
+    mockService.setMockMode(mockMode);
+  }, [mockMode]);
 
   const handleTabChange = (tab: string) => {
     setActiveTab(tab as TabType);
@@ -48,6 +55,7 @@ const GeoMonitorApp: React.FC = () => {
           initialData={viewState.runData}
           type={viewState.runType}
           onBack={handleBack}
+          mockMode={mockMode}
         />
       );
     }
@@ -55,11 +63,11 @@ const GeoMonitorApp: React.FC = () => {
     // 列表视图
     switch (activeTab) {
       case 'monitor':
-        return <MonitorCenter onViewResult={handleViewResult} />;
+        return <MonitorCenter onViewResult={handleViewResult} mockMode={mockMode} />;
       case 'brand-duel':
-        return <BrandDuel onViewResult={handleViewResult} />;
+        return <BrandDuel onViewResult={handleViewResult} mockMode={mockMode} />;
       case 'history':
-        return <HistoryPage onViewResult={handleViewResult} />;
+        return <HistoryPage onViewResult={handleViewResult} mockMode={mockMode} />;
       case 'gpt-demo':
         return <GptDemo />;
       case 'settings':
@@ -70,7 +78,7 @@ const GeoMonitorApp: React.FC = () => {
           </div>
         );
       default:
-        return <MonitorCenter onViewResult={handleViewResult} />;
+        return <MonitorCenter onViewResult={handleViewResult} mockMode={mockMode} />;
     }
   };
 
@@ -83,7 +91,12 @@ const GeoMonitorApp: React.FC = () => {
         background: COLORS.bgSecondary,
       }}
     >
-      <Sidebar activeTab={activeTab} onTabChange={handleTabChange} />
+      <Sidebar 
+        activeTab={activeTab} 
+        onTabChange={handleTabChange}
+        mockMode={mockMode}
+        onMockModeChange={setMockMode}
+      />
       
       <main style={{
         flex: 1,

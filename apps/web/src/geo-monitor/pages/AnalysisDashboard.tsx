@@ -3,6 +3,7 @@ import { COLORS, RADIUS } from '../styles/theme';
 import { Card, Button, StatusBadge, Spinner } from '../components/ui';
 import { Icons } from '../components/Icons';
 import { PieChart, SentimentGauge, CHART_COLORS } from '../components/Charts';
+import { mockService } from '../services/mockService';
 
 const API_PREFIX = (import.meta as any).env?.VITE_API_PREFIX || "/api";
 
@@ -11,13 +12,15 @@ interface AnalysisDashboardProps {
   initialData?: any;
   type?: 'category' | 'brand-duel';
   onBack: () => void;
+  mockMode?: boolean;
 }
 
 const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({
   runId,
   initialData,
   type = 'category',
-  onBack
+  onBack,
+  mockMode = false
 }) => {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -28,7 +31,30 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({
   }, [runId]);
 
   const fetchData = async () => {
+    // 如果有初始数据且包含分析结果，直接使用
+    if (initialData?.analysis_result) {
+      setData(initialData);
+      if (initialData.queries && initialData.queries.length > 0) {
+        setActiveQueryTab(initialData.queries[0].id);
+      }
+      setLoading(false);
+      return;
+    }
+    
     setLoading(true);
+    
+    // Mock模式
+    if (mockMode) {
+      const mockData = mockService.getMockRunDetail(runId, initialData?.category);
+      setData(mockData);
+      if (mockData.queries && mockData.queries.length > 0) {
+        setActiveQueryTab(mockData.queries[0].id);
+      }
+      setLoading(false);
+      return;
+    }
+    
+    // 真实模式
     try {
       const endpoint = type === 'category' 
         ? `${API_PREFIX}/pipelines/category/${runId}`
