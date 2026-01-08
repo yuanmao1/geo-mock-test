@@ -141,21 +141,28 @@ class ChatGPTBrowser(HumanBehaviorMixin):
         # Ensure user data directory exists
         self.user_data_path.mkdir(parents=True, exist_ok=True)
 
+        # Force remove lock file if it exists (prevents "Browser connection fails" error)
+        lock_file = self.user_data_path / "SingletonLock"
+        if lock_file.exists():
+            try:
+                lock_file.unlink()
+                logger.info(f"Removed stale lock file: {lock_file}")
+            except Exception as e:
+                logger.warning(f"Could not remove lock file: {e}")
+
         # Set user data path for session persistence
         co.set_user_data_path(str(self.user_data_path))
 
         # Headless mode (configurable)
         if settings.browser_headless:
-            # Using --headless=new is the modern way, but sometimes --headless=old is more stable in older environments
             co.set_argument('--headless=new')
 
         # Docker-friendly flags (Chrome often needs these in containers)
-        # Always apply these in Docker to ensure stability
         co.set_argument("--no-sandbox")
         co.set_argument("--disable-dev-shm-usage")
         co.set_argument("--disable-gpu")
         co.set_argument("--disable-software-rasterizer")
-        co.set_argument("--remote-debugging-address=0.0.0.0")
+        co.set_argument("--remote-allow-origins=*")
 
         # Specific binary path if needed
         chrome_bin = os.environ.get("CHROME_BIN") or "/usr/bin/google-chrome"
@@ -171,6 +178,7 @@ class ChatGPTBrowser(HumanBehaviorMixin):
         co.set_argument('--window-size=1920,1080')
 
         # Automatically assign a free port to support concurrency
+        # This will set the port Chrome listens on and DrissionPage connects to
         co.auto_port()
 
         return co

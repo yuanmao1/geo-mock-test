@@ -8,7 +8,7 @@ services:
     container_name: geo-mock-server
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "${PUBLIC_PORT:-3000}:3000"
     env_file:
       - ../.env
     environment:
@@ -47,7 +47,6 @@ services:
       - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - DB_NAME=${GPT_DB_NAME:-gpt_interaction}
       # 浏览器配置
-      - BROWSER_HEADLESS=true
       - BROWSER_USER_DATA_BASE_PATH=/app/user_data
       - BROWSER_NEW_CHAT_PER_TASK=true
       - ENABLE_XVFB=1
