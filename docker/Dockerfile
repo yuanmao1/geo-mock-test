@@ -15,6 +15,12 @@ COPY tsconfig.base.json ./
 RUN rm -rf node_modules apps/web/node_modules packages/shared-types/node_modules && \
     bun install --no-save
 
+# Build frontend
+ARG VITE_BASE_PATH=/public/ecommerce
+ENV VITE_BASE_PATH=$VITE_BASE_PATH
+RUN bun run build
+# Vite is configured to output directly to /app/public (outDir: "../../public")
+
 # Environment variables
 ENV NODE_ENV=production
 ENV PORT=3000

@@ -449,18 +449,21 @@ export const mockService = {
         category: '扫地机器人',
         status: 'completed',
         created_at: new Date(Date.now() - 86400000).toISOString(),
+        query_count: 10,
       },
       {
         id: 'mock-history-2',
         category: '空调',
         status: 'completed',
         created_at: new Date(Date.now() - 172800000).toISOString(),
+        query_count: 10,
       },
       {
         id: 'mock-history-3',
         category: '耳机',
         status: 'completed',
         created_at: new Date(Date.now() - 259200000).toISOString(),
+        query_count: 10,
       },
     ];
   },
@@ -468,10 +471,39 @@ export const mockService = {
   /**
    * 获取Mock运行详情
    */
-  getMockRunDetail(runId: string, category?: string): any {
+  getMockRunDetail(runId: string, category?: string, brandA?: string, brandB?: string): any {
+    const isDuel = Boolean(brandA && brandB);
     const cat = category || '空调';
-    const brandData = mockBrandDatasets[cat] || mockBrandDatasets.default;
     
+    if (isDuel) {
+      const bA = brandA as string;
+      const bB = brandB as string;
+      const duelResult = {
+        ...mockBrandDuelResults.default,
+        winner: Math.random() > 0.5 ? bA : bB,
+        rounds: [
+          { query: '核心性能', winner: bA, reason: '技术更成熟', detail: `${bA}在核心技术上有更深厚的积累。` },
+          { query: '性价比', winner: bB, reason: '价格更亲民', detail: `同等配置下${bB}价格优势明显。` },
+          { query: '用户口碑', winner: bA, reason: '评价更高', detail: `${bA}的用户满意度评分更高。` },
+          { query: '售后服务', winner: bB, reason: '响应更快', detail: `${bB}的售后响应速度更快。` },
+          { query: '创新能力', winner: bA, reason: '功能更新快', detail: `${bA}的产品迭代更频繁。` },
+        ],
+      };
+
+      return {
+        id: runId,
+        brand_a: bA,
+        brand_b: bB,
+        category: cat,
+        status: 'completed',
+        queries: [], // 对决模式通常展示rounds
+        analysis_result: duelResult,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+    }
+
+    const brandData = mockBrandDatasets[cat] || mockBrandDatasets.default;
     return {
       id: runId,
       category: cat,
