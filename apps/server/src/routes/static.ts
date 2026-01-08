@@ -1,11 +1,12 @@
 import type { Elysia } from "elysia";
 import { join } from "path";
+import { config } from "../lib/config";
 
 const BASE_PATH = "/public/ecommerce";
 
 export function registerStaticRoutes(app: any) {
   return app.get("*", async ({ path, set }: { path: string; set: any }) => {
-    if (path.startsWith("/api")) {
+    if (path.startsWith(config.apiPrefix)) {
       set.status = 404;
       return { error: "Not Found" };
     }

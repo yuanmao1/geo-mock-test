@@ -23,6 +23,14 @@ import { GeoCopyType, LLMModel } from "@geo/shared-types";
 const API_BASE =
   import.meta.env.VITE_API_TARGET ||
   (import.meta.env.VITE_BASE_PATH ? import.meta.env.VITE_BASE_PATH : "");
+const API_PREFIX = import.meta.env.VITE_API_PREFIX || "/api";
+const joinPath = (base: string, prefix: string) => {
+  if (!base) return prefix;
+  const trimmedBase = base.endsWith("/") ? base.slice(0, -1) : base;
+  const normalizedPrefix = prefix.startsWith("/") ? prefix : `/${prefix}`;
+  return `${trimmedBase}${normalizedPrefix}`;
+};
+const API_ROOT = joinPath(API_BASE, API_PREFIX);
 
 const dedupeProductsById = (items: Product[]) => {
   const seen = new Map<string, Product>();
@@ -1757,8 +1765,8 @@ const App = () => {
     const fetchData = async () => {
       try {
         const [prodRes, modelRes] = await Promise.all([
-          fetch(`${API_BASE}/api/products`),
-          fetch(`${API_BASE}/api/models`),
+          fetch(`${API_ROOT}/products`),
+          fetch(`${API_ROOT}/models`),
         ]);
         const prodData = await prodRes.json();
         const modelData = await modelRes.json();
@@ -1802,7 +1810,7 @@ const App = () => {
       copyTypes.forEach((type, typeIndex) => {
         tasks.push(async () => {
           try {
-            const response = await fetch(`${API_BASE}/api/generate`, {
+            const response = await fetch(`${API_ROOT}/generate`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
@@ -1897,7 +1905,7 @@ const App = () => {
 
     const tasks: Array<() => Promise<void>> = selectedTypes.map((type, typeIndex) => async () => {
       try {
-        const response = await fetch(`${API_BASE}/api/generate`, {
+        const response = await fetch(`${API_ROOT}/generate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

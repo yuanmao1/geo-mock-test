@@ -16,7 +16,8 @@
     "@elysiajs/cors": "latest",
     "@geo/shared-types": "workspace:*",
     "@sinclair/typebox": "^0.34.45",
-    "elysia": "latest"
+    "elysia": "latest",
+    "postgres": "^3.4.5"
   },
   "devDependencies": {
     "bun-types": "latest"
