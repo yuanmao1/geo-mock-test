@@ -24,7 +24,7 @@ const updateRun = async (runId: string, fields: PipelineRunUpdate) => {
   if (fields.analysis_workflow_run_id !== undefined)
     updates.analysis_workflow_run_id = fields.analysis_workflow_run_id;
   if (fields.analysis_result !== undefined)
-    updates.analysis_result = sql.json(fields.analysis_result);
+    updates.analysis_result = sql.json(fields.analysis_result as any);
   if (fields.error !== undefined) updates.error = fields.error;
 
   if (Object.keys(updates).length === 0) return;
@@ -68,9 +68,9 @@ const updateQueryFromWebhook = async (task: TaskResponse) => {
   await sql`
     update category_pipeline_queries
     set status = ${task.status},
-        response_text = ${task.response ?? null},
-        response_raw = ${sql.json(task)},
-        updated_at = now()
+      response_text = ${task.response ?? null},
+      response_raw = ${sql.json(task as any)},
+      updated_at = now()
     where gpt_task_id = ${task.id}
   `;
 };
@@ -84,7 +84,7 @@ const markQueryFailed = async (
     update category_pipeline_queries
     set status = 'failed',
         response_text = ${error},
-        response_raw = ${sql.json(responseRaw ?? { error })},
+        response_raw = ${sql.json((responseRaw ?? { error }) as any)},
         updated_at = now()
     where id = ${queryId}
   `;
@@ -120,6 +120,57 @@ const getQueriesByRunId = async (runId: string) => {
   `;
 };
 
+const listRuns = async (page: number, pageSize: number) => {
+  const offset = (page - 1) * pageSize;
+  const runs = await sql<(PipelineRunRow & { query_count: number })[]>`
+    select r.*, 
+           (select count(*)::int from category_pipeline_queries q where q.run_id = r.id) as query_count
+    from category_pipeline_runs r
+    order by r.created_at desc
+    limit ${pageSize}
+    offset ${offset}
+  `;
+  const totals = await sql<{ total: number }[]>`
+    select count(*)::int as total
+    from category_pipeline_runs
+  `;
+  return {
+    runs,
+    total: totals[0]?.total ?? 0,
+  };
+};
+
+// 获取品类下所有运行的统计数据
+const getCategoryStats = async (category: string) => {
+  const runs = await sql<PipelineRunRow[]>`
+    select *
+    from category_pipeline_runs
+    where category = ${category}
+      and status = 'completed'
+    order by created_at desc
+  `;
+  return runs;
+};
+
+// 聚合多次品类分析结果
+const getAggregatedResults = async (category: string) => {
+  const runs = await sql<(PipelineRunRow & { queries: PipelineQueryRow[] })[]>`
+    select r.*,
+           coalesce(
+             (select json_agg(q.* order by q.position) 
+              from category_pipeline_queries q 
+              where q.run_id = r.id), 
+             '[]'
+           ) as queries
+    from category_pipeline_runs r
+    where r.category = ${category}
+      and r.status = 'completed'
+    order by r.created_at desc
+    limit 10
+  `;
+  return runs;
+};
+
 const trySetAnalyzing = async (runId: string) => {
   const rows = await sql`
     update category_pipeline_runs
@@ -145,6 +196,9 @@ export const pipelineRepo = {
   findRunByTaskId,
   getRunById,
   getQueriesByRunId,
+  listRuns,
   trySetAnalyzing,
   allQueriesTerminal,
+  getCategoryStats,
+  getAggregatedResults,
 };

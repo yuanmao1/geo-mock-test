@@ -120,6 +120,25 @@ const getQueriesByRunId = async (runId: string) => {
   `;
 };
 
+const listRuns = async (page: number, pageSize: number) => {
+  const offset = (page - 1) * pageSize;
+  const runs = await sql<BrandDuelRunRow[]>`
+    select *
+    from brand_duel_runs
+    order by created_at desc
+    limit ${pageSize}
+    offset ${offset}
+  `;
+  const totals = await sql<{ total: number }[]>`
+    select count(*)::int as total
+    from brand_duel_runs
+  `;
+  return {
+    runs,
+    total: totals[0]?.total ?? 0,
+  };
+};
+
 const trySetAnalyzing = async (runId: string) => {
   const rows = await sql`
     update brand_duel_runs
@@ -145,6 +164,7 @@ export const brandDuelRepo = {
   findRunByTaskId,
   getRunById,
   getQueriesByRunId,
+  listRuns,
   trySetAnalyzing,
   allQueriesTerminal,
 };

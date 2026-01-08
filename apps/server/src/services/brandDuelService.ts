@@ -185,4 +185,16 @@ export const brandDuelService = {
     const queries = await brandDuelRepo.getQueriesByRunId(runId);
     return { ...run, queries };
   },
+
+  async listRuns(page = 1, pageSize = 20) {
+    const safePage = Math.max(1, page);
+    const safePageSize = Math.min(100, Math.max(1, pageSize));
+    const { runs, total } = await brandDuelRepo.listRuns(safePage, safePageSize);
+    return {
+      runs,
+      total,
+      page: safePage,
+      page_size: safePageSize,
+    };
+  },
 };

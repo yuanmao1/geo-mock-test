@@ -1,38 +1,17 @@
-export type PipelineStatus = "pending" | "running" | "analyzing" | "completed" | "failed";
+import type {
+  PipelineQueryRow,
+  PipelineQueryStatus,
+  PipelineRunRow,
+  PipelineRunWithQueries,
+  PipelineStatus,
+} from "@geo/shared-types";
 
-export type PipelineQueryStatus =
-  | "pending"
-  | "running"
-  | "waiting_login"
-  | "waiting_captcha"
-  | "completed"
-  | "failed"
-  | "cancelled"
-  | "timeout";
-
-export type PipelineRunRow = {
-  id: string;
-  category: string;
-  status: PipelineStatus;
-  dify_workflow_run_id: string | null;
-  analysis_workflow_run_id: string | null;
-  analysis_result: unknown | null;
-  error: string | null;
-  created_at: string;
-  updated_at: string;
-};
-
-export type PipelineQueryRow = {
-  id: string;
-  run_id: string;
-  query: string;
-  position: number;
-  gpt_task_id: string | null;
-  status: PipelineQueryStatus;
-  response_text: string | null;
-  response_raw: unknown | null;
-  created_at: string;
-  updated_at: string;
+export type {
+  PipelineQueryRow,
+  PipelineQueryStatus,
+  PipelineRunRow,
+  PipelineRunWithQueries,
+  PipelineStatus,
 };
 
 export type PipelineRunUpdate = Partial<{
@@ -49,8 +28,4 @@ export type PipelineQueryInsert = {
   query: string;
   position: number;
   status: PipelineQueryStatus;
-};
-
-export type PipelineRunWithQueries = PipelineRunRow & {
-  queries: PipelineQueryRow[];
 };

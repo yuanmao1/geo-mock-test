@@ -3,6 +3,18 @@ import { brandDuelService } from "../services/brandDuelService";
 
 export const registerBrandDuelRoutes = (app: any) =>
   app
+    .get(
+      "/pipelines/brand-duel",
+      async ({
+        query,
+      }: {
+        query: { page?: string; page_size?: string };
+      }) => {
+        const page = query?.page ? Number(query.page) : 1;
+        const pageSize = query?.page_size ? Number(query.page_size) : 20;
+        return brandDuelService.listRuns(page, pageSize);
+      }
+    )
     .post(
       "/pipelines/brand-duel",
       async ({

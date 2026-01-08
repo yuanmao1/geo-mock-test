@@ -172,4 +172,125 @@ export const geoMonitorService = {
     const queries = await pipelineRepo.getQueriesByRunId(runId);
     return { ...run, queries };
   },
+
+  async listRuns(page = 1, pageSize = 20) {
+    const safePage = Math.max(1, page);
+    const safePageSize = Math.min(100, Math.max(1, pageSize));
+    const { runs, total } = await pipelineRepo.listRuns(safePage, safePageSize);
+    return {
+      runs,
+      total,
+      page: safePage,
+      page_size: safePageSize,
+    };
+  },
+
+  // 获取品类聚合统计
+  async getCategoryAggregation(category: string) {
+    const runs = await pipelineRepo.getAggregatedResults(category);
+    
+    if (!runs.length) {
+      return {
+        category,
+        total_runs: 0,
+        brands: [],
+        summary: null,
+      };
+    }
+
+    // 聚合所有分析结果中的品牌数据
+    const brandMap = new Map<string, {
+      mentions: number;
+      positive: number;
+      negative: number;
+      neutral: number;
+      keywords: Set<string>;
+      strengths: Set<string>;
+      weaknesses: Set<string>;
+    }>();
+
+    for (const run of runs) {
+      let analysisResult = run.analysis_result;
+      if (typeof analysisResult === 'string') {
+        try {
+          analysisResult = JSON.parse(analysisResult);
+        } catch {
+          continue;
+        }
+      }
+
+      // 处理分析结果
+      const brands = Array.isArray(analysisResult) 
+        ? analysisResult 
+        : (analysisResult as { summary?: { leaderboard?: unknown[] } })?.summary?.leaderboard || [];
+
+      for (const brand of brands) {
+        const name = brand.brand || brand.name;
+        if (!name) continue;
+
+        const existing = brandMap.get(name) || {
+          mentions: 0,
+          positive: 0,
+          negative: 0,
+          neutral: 0,
+          keywords: new Set(),
+          strengths: new Set(),
+          weaknesses: new Set(),
+        };
+
+        existing.mentions++;
+        
+        // 情感统计
+        const sentiment = brand.sentiment?.toLowerCase?.() || '';
+        if (sentiment.includes('positive') || (typeof brand.sentiment === 'number' && brand.sentiment > 0.6)) {
+          existing.positive++;
+        } else if (sentiment.includes('negative') || (typeof brand.sentiment === 'number' && brand.sentiment < 0.4)) {
+          existing.negative++;
+        } else {
+          existing.neutral++;
+        }
+
+        // 关键词
+        if (brand.keywords) {
+          brand.keywords.forEach((k: string) => existing.keywords.add(k));
+        }
+        if (brand.strengths) {
+          brand.strengths.forEach((s: string) => existing.strengths.add(s));
+        }
+        if (brand.weaknesses) {
+          brand.weaknesses.forEach((w: string) => existing.weaknesses.add(w));
+        }
+
+        brandMap.set(name, existing);
+      }
+    }
+
+    // 转换为数组并排序
+    const aggregatedBrands = Array.from(brandMap.entries())
+      .map(([name, data]) => ({
+        brand: name,
+        mentions: data.mentions,
+        sentiment: {
+          positive: data.positive,
+          negative: data.negative,
+          neutral: data.neutral,
+        },
+        mentionRate: (data.mentions / runs.length) * 100,
+        keywords: Array.from(data.keywords).slice(0, 10),
+        strengths: Array.from(data.strengths).slice(0, 5),
+        weaknesses: Array.from(data.weaknesses).slice(0, 5),
+      }))
+      .sort((a, b) => b.mentions - a.mentions);
+
+    return {
+      category,
+      total_runs: runs.length,
+      date_range: {
+        from: runs[runs.length - 1]?.created_at,
+        to: runs[0]?.created_at,
+      },
+      brands: aggregatedBrands,
+      top_brand: aggregatedBrands[0]?.brand || null,
+    };
+  },
 };

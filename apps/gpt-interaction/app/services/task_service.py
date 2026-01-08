@@ -366,6 +366,31 @@ class TaskService:
             logger.info(f"Task {task_id} cancelled")
             return self._model_to_response(task)
 
+    async def reset_stuck_tasks(self) -> int:
+        """
+        Reset tasks that are stuck in RUNNING state to PENDING.
+        This should be called on application startup.
+        """
+        async with get_db_session() as session:
+            query = (
+                select(TaskModel)
+                .where(TaskModel.status == TaskStatus.RUNNING)
+            )
+            result = await session.execute(query)
+            tasks = result.scalars().all()
+            
+            count = 0
+            for task in tasks:
+                task.status = TaskStatus.PENDING
+                task.started_at = None
+                count += 1
+            
+            if count > 0:
+                await session.commit()
+                logger.info(f"Reset {count} stuck tasks from RUNNING to PENDING")
+            
+            return count
+
 
 # Global service instance
 task_service = TaskService()

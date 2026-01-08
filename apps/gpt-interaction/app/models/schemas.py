@@ -115,6 +115,7 @@ class TaskResponse(BaseModel):
     created_at: datetime = Field(..., description="Task creation timestamp")
     started_at: Optional[datetime] = Field(None, description="Task start timestamp")
     completed_at: Optional[datetime] = Field(None, description="Task completion timestamp")
+    screenshot: Optional[str] = Field(None, description="Base64 encoded screenshot if requested")
     metadata: Optional[dict[str, Any]] = Field(None, description="Custom metadata")
 
     class Config:

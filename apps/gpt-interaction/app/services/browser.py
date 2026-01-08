@@ -162,6 +162,9 @@ class ChatGPTBrowser(HumanBehaviorMixin):
         # Window size for consistent behavior
         co.set_argument('--window-size=1920,1080')
 
+        # Automatically assign a free port to support concurrency
+        co.auto_port()
+
         return co
 
     def initialize(self) -> None:
@@ -173,11 +176,15 @@ class ChatGPTBrowser(HumanBehaviorMixin):
         logger.info(f"Initializing browser for user {self.user_id}")
 
         try:
-            # Try to restore session from S3
-            if self.storage.download_session(self.user_id, self.user_data_path):
-                logger.info(f"Restored session for user {self.user_id} from S3")
+            # Try to restore session from S3 (skip for default user)
+            is_default_user = (self.user_id == settings.default_user_id)
+            if not is_default_user:
+                if self.storage.download_session(self.user_id, self.user_data_path):
+                    logger.info(f"Restored session for user {self.user_id} from S3")
+                else:
+                    logger.info(f"No remote session found for user {self.user_id}, starting fresh")
             else:
-                logger.info(f"No remote session found for user {self.user_id}, starting fresh")
+                logger.info("Skipping S3 download for default user (local only)")
 
             options = self._create_browser_options()
             self.page = ChromiumPage(options)
@@ -188,13 +195,34 @@ class ChatGPTBrowser(HumanBehaviorMixin):
             self.page.get(self.CHATGPT_URL)
 
             # Initial delay for page load
-            sync_human_delay(1000, 2000)
+            sync_human_delay(400, 800)
 
             # Handle initial popups
             self._handle_popups()
 
+            # Check for CAPTCHA / human verification early (e.g. Cloudflare challenge page)
+            captcha_type = self.check_captcha()
+            if captcha_type:
+                logger.warning(f"CAPTCHA detected ({captcha_type}), attempting auto-solution...")
+                if self._attempt_captcha_solution(captcha_type):
+                    logger.info("CAPTCHA solved during initialization")
+                else:
+                    raise CaptchaDetectedError(captcha_type)
+
             # Check login status immediately
-            if not self.check_login_status():
+            is_logged_in = self.check_login_status()
+            
+            # Check for Guest Mode if not fully logged in
+            is_guest_mode = False
+            if not is_logged_in:
+                textarea = self.page.ele(self.SELECTORS["prompt_textarea"], timeout=5) or \
+                           self.page.ele('css:textarea[id="prompt-textarea"]') or \
+                           self.page.ele('css:div[contenteditable="true"]')
+                if textarea:
+                    logger.info("Guest mode detected (Login button present but input available)")
+                    is_guest_mode = True
+
+            if not is_logged_in and not is_guest_mode:
                 logger.info("Login check failed on startup, attempting auto-login...")
                 
                 # Try auto-login if credentials are configured
@@ -207,11 +235,16 @@ class ChatGPTBrowser(HumanBehaviorMixin):
                         logger.error("Auto-login failed")
                 
                 # If auto-login failed or not configured, raise error
+                # But allow ignoring login check if specifically configured or strictly needed?
+                # For now, strict check unless guest mode
                 if self.page.ele(self.SELECTORS["login_button"]) or "auth.openai.com" in self.page.url:
                     raise LoginRequiredError(self.user_id)
                 
                 raise LoginRequiredError(self.user_id)
 
+        except (CaptchaDetectedError, LoginRequiredError):
+            # Let caller handle these explicitly (task status WAITING_CAPTCHA / WAITING_LOGIN)
+            raise
         except Exception as e:
             logger.error(f"Failed to initialize browser: {e}")
             self._is_initialized = False
@@ -239,6 +272,92 @@ class ChatGPTBrowser(HumanBehaviorMixin):
                     break
             except Exception:
                 pass
+
+    def _attempt_captcha_solution(self, captcha_type: str) -> bool:
+        """
+        Attempt to automatically solve CAPTCHA (Cloudflare/Turnstile).
+        Strategy: Find the clicking area (checkbox/iframe) and click it.
+        
+        Args:
+            captcha_type: The detected CAPTCHA type.
+            
+        Returns:
+            True if CAPTCHA seems resolved, False otherwise.
+        """
+        logger.info(f"Attempting to solve {captcha_type}...")
+        
+        try:
+            # Common strategy for Cloudflare / Turnstile:
+            # 1. Find the challenge iframe or container
+            # 2. Click the checkbox or the container center
+            # 3. Wait and check if verified
+            
+            # Selectors for clickable areas
+            click_targets = [
+                # Turnstile / Cloudflare specific
+                "css:iframe[src*='challenges.cloudflare.com']",
+                "css:iframe[src*='turnstile']",
+                ".cf-turnstile-wrapper",
+                "#turnstile-wrapper",
+                # Generic checkbox in shadow DOM or iframes often used
+                "css:input[type='checkbox']",
+                "css:div.cb-i", # older cloudflare
+                # Text that says "Verify you are human"
+                "text:Verify you are human",
+                "text:确认您是真人",
+            ]
+            
+            target = None
+            for sel in click_targets:
+                # Try finding in main page first
+                ele = self.page.ele(sel, timeout=2)
+                if ele:
+                    target = ele
+                    break
+            
+            if not target:
+                # Search inside all iframes if not found in main page
+                for iframe in self.page.frames:
+                    for sel in ["css:input[type='checkbox']", "#challenge-stage", ".ctp-checkbox-label"]:
+                        try:
+                            ele = iframe.ele(sel, timeout=1)
+                            if ele:
+                                target = ele
+                                break
+                        except:
+                            pass
+                    if target: break
+
+            if target:
+                logger.info(f"Found CAPTCHA target: {target}")
+                sync_human_delay(500, 1500)
+                
+                # Move mouse and click
+                try:
+                    self.page.actions.move_to(target).click()
+                except:
+                    # Fallback JS click
+                    target.click(by_js=True)
+                
+                logger.info("Clicked CAPTCHA target, waiting for resolution...")
+                
+                # Wait loop to check if CAPTCHA disappears
+                start_wait = time.time()
+                while time.time() - start_wait < 30: # Wait up to 30s
+                    sync_human_delay(800, 1500)
+                    if not self.check_captcha():
+                        logger.info("CAPTCHA resolved successfully")
+                        return True
+                        
+                logger.warning("CAPTCHA did not disappear after clicking")
+                return False
+            else:
+                logger.warning("Could not find clickable CAPTCHA target")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error attempting CAPTCHA solution: {e}")
+            return False
 
     def check_captcha(self) -> Optional[str]:
         """
@@ -329,7 +448,7 @@ class ChatGPTBrowser(HumanBehaviorMixin):
                  if login_btn:
                      logger.info("Clicking Log in button...")
                      login_btn.click()
-                     sync_human_delay(2000, 3000)
+                     sync_human_delay(800, 1200)
             
             # 2. Enter Email
             # Try multiple selectors for email input
@@ -352,7 +471,7 @@ class ChatGPTBrowser(HumanBehaviorMixin):
                 if continue_btn:
                     logger.info("Clicking Continue...")
                     self.page.actions.move_to(continue_btn).click()
-                    sync_human_delay(2000, 4000)
+                    sync_human_delay(800, 1500)
                 else:
                     logger.warning("Continue button not found")
                     return False
@@ -370,7 +489,7 @@ class ChatGPTBrowser(HumanBehaviorMixin):
                     if use_password_btn:
                         logger.info("Clicking 'Use password'...")
                         self.page.actions.move_to(use_password_btn).click()
-                        sync_human_delay(1000, 2000)
+                        sync_human_delay(500, 1000)
 
                     # Wait for password field
                     password_input = self.page.ele("css:input[name='passwd']", timeout=10) or \
@@ -580,7 +699,7 @@ class ChatGPTBrowser(HumanBehaviorMixin):
                 except Exception:
                     attach_btn.click(by_js=True)
             self.after_action("enable_search_open_menu")
-            sync_human_delay(400, 900)
+            sync_human_delay(200, 400)
 
             def _find_search_option(timeout: int = 2):
                 # Use exact-match text= to reduce false positives.
@@ -716,12 +835,12 @@ class ChatGPTBrowser(HumanBehaviorMixin):
         # Use DrissionPage's input which is more reliable
         # But add some human-like delays around it
         if should_do_micro_action():
-            sync_human_delay(500, 1500)
+            sync_human_delay(200, 500)
 
         textarea.input(message)
 
         # Short pause after typing
-        sync_human_delay(300, 800)
+        sync_human_delay(100, 300)
 
     def _click_send(self) -> None:
         """Click the send button with human-like behavior."""
@@ -771,6 +890,16 @@ class ChatGPTBrowser(HumanBehaviorMixin):
 
         while time.time() - start_time < timeout:
             try:
+                captcha_type = self.check_captcha()
+                if captcha_type:
+                    logger.warning(f"CAPTCHA detected during wait ({captcha_type}), attempting auto-solution...")
+                    if self._attempt_captcha_solution(captcha_type):
+                        logger.info("CAPTCHA solved, resuming wait")
+                        # Reset stop_seen might be needed if page refreshed? 
+                        # Assuming flow continues.
+                    else:
+                        raise CaptchaDetectedError(captcha_type)
+
                 if self.page.ele(self.SELECTORS["stop_button"]):
                     stop_seen = True
                     time.sleep(2)
@@ -804,7 +933,7 @@ class ChatGPTBrowser(HumanBehaviorMixin):
         logger.warning("Timeout waiting for response")
 
         # Small delay for DOM to settle
-        sync_human_delay(1000, 2000)
+        sync_human_delay(800, 1500)
 
         # Get response (with debug info if still empty)
         return self._extract_response()
@@ -1145,7 +1274,7 @@ class ChatGPTBrowser(HumanBehaviorMixin):
             # Wait for textarea to be ready
             if settings.browser_new_chat_per_task:
                 self.start_new_chat()
-                sync_human_delay(500, 1000)
+                sync_human_delay(200, 500)
 
             if not self.page.ele(self.SELECTORS["prompt_textarea"], timeout=15):
                 return ChatResponse(
@@ -1165,7 +1294,7 @@ class ChatGPTBrowser(HumanBehaviorMixin):
             self._click_send()
 
             # Check if sending triggered a login prompt (e.g. Guest limit reached)
-            sync_human_delay(500, 1500)
+            sync_human_delay(200, 500)
             if self.page.ele('text:Log in to continue', timeout=2) or \
                self.page.ele('text:登录以继续', timeout=2) or \
                self.page.ele('text:Sign up to continue', timeout=2) or \
@@ -1300,7 +1429,7 @@ class ChatGPTBrowser(HumanBehaviorMixin):
             file_input.input(file_path)
 
             # Wait for upload to complete (usually there's a progress indicator or the file appears)
-            sync_human_delay(1000, 3000)
+            sync_human_delay(800, 2500)
             return True
 
         except Exception as e:
@@ -1313,13 +1442,15 @@ class ChatGPTBrowser(HumanBehaviorMixin):
             try:
                 self.page.quit()
                 
-                # Save session to S3 after closing browser (to ensure files are not locked)
-                if self._is_initialized:
+                # Save session to S3 after closing browser (skip for default user)
+                if self._is_initialized and self.user_id != settings.default_user_id:
                     logger.info(f"Saving session for user {self.user_id} to S3...")
                     if self.storage.upload_session(self.user_id, self.user_data_path):
                         logger.info("Session saved successfully")
                     else:
                         logger.error("Failed to save session")
+                elif self.user_id == settings.default_user_id:
+                     logger.info("Skipping S3 upload for default user (local only)")
                         
             except Exception as e:
                 logger.warning(f"Error closing browser: {e}")

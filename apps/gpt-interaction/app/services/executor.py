@@ -146,7 +146,6 @@ class TaskExecutor:
         except Exception as e:
             logger.error(f"Task {task_id} failed with exception: {e}")
             return (False, str(e), "EXCEPTION", None)
-            return (False, str(e), "EXCEPTION")
 
         finally:
             # Remove browser from tracking
@@ -358,6 +357,12 @@ class TaskWorker:
             logger.warning("Worker already running")
             return
 
+        # Reset any tasks left in RUNNING state from previous run
+        try:
+            await task_service.reset_stuck_tasks()
+        except Exception as e:
+            logger.error(f"Failed to reset stuck tasks: {e}")
+
         logger.info("Starting task worker...")
         self._running = True
         self._task = asyncio.create_task(self._worker_loop())
@@ -387,15 +392,19 @@ class TaskWorker:
                 if available_slots > 0:
                     # Get pending tasks
                     running_by_user = self.executor.get_running_by_user()
+                    
                     pending_tasks = await task_service.get_pending_tasks(
                         limit=available_slots,
                         running_by_user=running_by_user,
                         per_user_limit=settings.max_concurrent_tasks_per_user
                     )
-
-                    # Submit tasks for execution
-                    for task in pending_tasks:
-                        await self.executor.submit_task(task)
+                    
+                    if pending_tasks:
+                        logger.info(f"Worker loop: fetched {len(pending_tasks)} pending tasks")
+                        # Submit tasks for execution
+                        for task in pending_tasks:
+                            logger.info(f"Submitting task {task.id} (user={task.user_id}) for execution")
+                            await self.executor.submit_task(task)
 
                 # Wait before next poll
                 await asyncio.sleep(self.poll_interval)

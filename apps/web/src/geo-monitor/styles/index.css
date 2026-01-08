@@ -1,0 +1,260 @@
+/* GEO Monitor Styles */
+.geo-monitor {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background-color: #F8FAFC;
+  min-height: 100vh;
+}
+
+/* Card Styles */
+.geo-card {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  transition: box-shadow 0.2s ease;
+}
+
+.geo-card:hover {
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+}
+
+/* Button Styles */
+.geo-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-weight: 500;
+  font-size: 14px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  border: none;
+  outline: none;
+}
+
+.geo-btn-primary {
+  background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
+  color: white;
+}
+
+.geo-btn-primary:hover {
+  background: linear-gradient(135deg, #60A5FA 0%, #3B82F6 100%);
+  transform: translateY(-1px);
+}
+
+.geo-btn-secondary {
+  background: white;
+  color: #3B82F6;
+  border: 1px solid #E2E8F0;
+}
+
+.geo-btn-secondary:hover {
+  background: #F8FAFC;
+  border-color: #3B82F6;
+}
+
+/* Input Styles */
+.geo-input {
+  width: 100%;
+  padding: 12px 16px;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: all 0.2s ease;
+  outline: none;
+  background: white;
+}
+
+.geo-input:focus {
+  border-color: #3B82F6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.geo-input::placeholder {
+  color: #94A3B8;
+}
+
+/* Table Styles */
+.geo-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.geo-table th {
+  text-align: left;
+  padding: 12px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748B;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: #F8FAFC;
+  border-bottom: 1px solid #E2E8F0;
+}
+
+.geo-table td {
+  padding: 16px;
+  border-bottom: 1px solid #F1F5F9;
+  color: #1E293B;
+  font-size: 14px;
+}
+
+.geo-table tr:hover {
+  background: #F8FAFC;
+}
+
+/* Status Badge */
+.geo-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.geo-status-completed {
+  background: #ECFDF5;
+  color: #059669;
+}
+
+.geo-status-running {
+  background: #EFF6FF;
+  color: #2563EB;
+}
+
+.geo-status-failed {
+  background: #FEF2F2;
+  color: #DC2626;
+}
+
+.geo-status-pending {
+  background: #F8FAFC;
+  color: #64748B;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Sidebar */
+.geo-sidebar {
+  width: 260px;
+  background: white;
+  border-right: 1px solid #E2E8F0;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  position: sticky;
+  top: 0;
+}
+
+.geo-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  color: #64748B;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  margin-bottom: 4px;
+}
+
+.geo-nav-item:hover {
+  background: #F8FAFC;
+  color: #1E293B;
+}
+
+.geo-nav-item.active {
+  background: #EFF6FF;
+  color: #3B82F6;
+}
+
+/* Progress Bar */
+.geo-progress {
+  height: 8px;
+  background: #E2E8F0;
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+.geo-progress-bar {
+  height: 100%;
+  border-radius: 9999px;
+  transition: width 0.3s ease;
+}
+
+/* Tooltip */
+.geo-tooltip {
+  position: relative;
+}
+
+.geo-tooltip::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 12px;
+  background: #1E293B;
+  color: white;
+  font-size: 12px;
+  border-radius: 6px;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.2s ease;
+}
+
+.geo-tooltip:hover::after {
+  opacity: 1;
+  visibility: visible;
+  margin-bottom: 8px;
+}
+
+/* Scrollbar */
+.geo-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.geo-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.geo-scroll::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 3px;
+}
+
+.geo-scroll::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}

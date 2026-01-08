@@ -19,6 +19,9 @@ import remarkGfm from "remark-gfm";
 import type { Product } from "@geo/shared-types";
 import { GeoCopyType, LLMModel } from "@geo/shared-types";
 import StreamTest from "./StreamTest";
+import { GeoMonitorApp } from "./geo-monitor";
+
+import MainLayout from "./layouts/MainLayout";
 
 // API_BASE: Use VITE_API_TARGET for dev proxy, or VITE_BASE_PATH for production sub-path deployment
 const API_BASE =
@@ -738,6 +741,10 @@ const GeoModal = ({
 
 const GeoControlCenter = () => {
   const location = useLocation();
+  
+  // Monitor 页面不需要电商 GEO 配置中心（它有自己的独立界面）
+  if (location.pathname.startsWith("/monitor")) return null;
+
   const {
     isAiPerspective,
     setIsAiPerspective,
@@ -2094,98 +2101,15 @@ const App = () => {
           }`}
         >
           {/* Navigation Bar - hidden in AI perspective */}
-          {!isAiPerspective && (
-            <nav className="border-b sticky top-0 z-50 bg-white border-gray-100">
-              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div className="flex justify-between h-16 items-center">
-                  <Link to="/" className="flex items-center space-x-2">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-indigo-600">
-                      <span className="text-white font-bold text-xl">G</span>
-                    </div>
-                    <span className="text-xl font-black tracking-tight text-gray-900">
-                      GEO<span className="text-indigo-600">MALL</span>
-                    </span>
-                  </Link>
-
-                  <div className="hidden md:flex items-center space-x-8">
-                    <Link
-                      to="/"
-                      className="text-sm font-medium text-gray-700 hover:text-indigo-600"
-                    >
-                      首页
-                    </Link>
-                    <a
-                      href="#"
-                      className="text-sm font-medium text-gray-500 hover:text-indigo-600"
-                    >
-                      新品
-                    </a>
-                    <a
-                      href="#"
-                      className="text-sm font-medium text-gray-500 hover:text-indigo-600"
-                    >
-                      限时特惠
-                    </a>
-                  </div>
-
-                  <div className="flex items-center space-x-4">
-                    <button className="p-2 text-gray-400 hover:text-gray-600">
-                      <svg
-                        className="w-6 h-6"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                        />
-                      </svg>
-                    </button>
-                    <button className="p-2 relative text-gray-400 hover:text-gray-600">
-                      <svg
-                        className="w-6 h-6"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"
-                        />
-                      </svg>
-                      <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 text-white text-[10px] flex items-center justify-center rounded-full">
-                        2
-                      </span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </nav>
-          )}
-
-          <main>
-            <Routes>
+          <Routes>
+            <Route element={<MainLayout />}>
               <Route path="/" element={<HomePage />} />
               <Route path="/product/:id" element={<ProductDetailPage />} />
               <Route path="/stream-test" element={<StreamTest />} />
-            </Routes>
-          </main>
-
-          {!isAiPerspective && (
-            <footer className="border-t py-12 mt-20 transition-colors duration-500 bg-gray-50 border-gray-100">
-              <div className="max-w-7xl mx-auto px-4 text-center">
-                <p className="text-sm transition-colors text-gray-400">
-                  © 2025 GEOMALL 演示平台 - 模拟真实电商交互体验
-                </p>
-              </div>
-            </footer>
-          )}
-
+            </Route>
+            <Route path="/monitor/*" element={<GeoMonitorApp />} />
+          </Routes>
+          
           <GeoControlCenter />
         </div>
       </Router>

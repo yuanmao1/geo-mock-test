@@ -90,10 +90,10 @@ class Settings(BaseSettings):
     s3_region_name: Optional[str] = Field(default=None, description="S3 region name")
 
     # Human-like behavior simulation
-    human_min_delay_ms: int = Field(default=500, description="Minimum delay for human simulation")
-    human_max_delay_ms: int = Field(default=2000, description="Maximum delay for human simulation")
-    typing_min_delay_ms: int = Field(default=30, description="Minimum typing delay per character")
-    typing_max_delay_ms: int = Field(default=100, description="Maximum typing delay per character")
+    human_min_delay_ms: int = Field(default=80, description="Minimum delay for human simulation")
+    human_max_delay_ms: int = Field(default=400, description="Maximum delay for human simulation")
+    typing_min_delay_ms: int = Field(default=10, description="Minimum typing delay per character")
+    typing_max_delay_ms: int = Field(default=25, description="Maximum typing delay per character")
 
     def get_user_data_path(self, user_id: Optional[str] = None) -> Path:
         """
