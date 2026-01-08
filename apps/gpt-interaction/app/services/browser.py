@@ -146,13 +146,21 @@ class ChatGPTBrowser(HumanBehaviorMixin):
 
         # Headless mode (configurable)
         if settings.browser_headless:
+            # Using --headless=new is the modern way, but sometimes --headless=old is more stable in older environments
             co.set_argument('--headless=new')
 
         # Docker-friendly flags (Chrome often needs these in containers)
-        in_docker = Path("/.dockerenv").exists() or os.environ.get("RUNNING_IN_DOCKER") == "1"
-        if in_docker and os.environ.get("CHROME_NO_SANDBOX", "1") == "1":
-            co.set_argument("--no-sandbox")
-            co.set_argument("--disable-dev-shm-usage")
+        # Always apply these in Docker to ensure stability
+        co.set_argument("--no-sandbox")
+        co.set_argument("--disable-dev-shm-usage")
+        co.set_argument("--disable-gpu")
+        co.set_argument("--disable-software-rasterizer")
+        co.set_argument("--remote-debugging-address=0.0.0.0")
+
+        # Specific binary path if needed
+        chrome_bin = os.environ.get("CHROME_BIN") or "/usr/bin/google-chrome"
+        if Path(chrome_bin).exists():
+            co.set_browser_path(chrome_bin)
 
         # Additional stealth options
         co.set_argument('--disable-blink-features=AutomationControlled')
@@ -187,7 +195,24 @@ class ChatGPTBrowser(HumanBehaviorMixin):
                 logger.info("Skipping S3 download for default user (local only)")
 
             options = self._create_browser_options()
-            self.page = ChromiumPage(options)
+            
+            # Add retry logic for browser initialization to handle transient "Handshake 404" errors
+            max_retries = 3
+            last_error = None
+            for attempt in range(max_retries):
+                try:
+                    logger.info(f"Starting browser (attempt {attempt + 1}/{max_retries})...")
+                    self.page = ChromiumPage(options)
+                    break
+                except Exception as e:
+                    last_error = e
+                    if attempt < max_retries - 1:
+                        logger.warning(f"Browser start failed: {e}. Retrying in 2s...")
+                        time.sleep(2)
+                    else:
+                        logger.error(f"Browser start failed after {max_retries} attempts.")
+                        raise BrowserException(f"Browser initialization failed: {last_error}")
+
             self._is_initialized = True
 
             # Navigate to ChatGPT

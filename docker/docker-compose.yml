@@ -1,27 +1,14 @@
 services:
-  # Nginx - 反向代理，统一入口
-  nginx:
-    image: nginx:alpine
-    container_name: geo-mock-nginx
-    restart: unless-stopped
-    ports:
-      - "${NGINX_PORT:-8182}:80"
-    volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
-    depends_on:
-      - server
-      - gpt-interaction
-
   # API Server - handles /api/* requests
   server:
-    image: codedevin/geo-mock-test:v1.1
+    image: codedevin/geo-mock-test:v1.2.1
     build:
       context: ..
       dockerfile: docker/Dockerfile
     container_name: geo-mock-server
     restart: unless-stopped
-    expose:
-      - "3000"
+    ports:
+      - "3000:3000"
     env_file:
       - ../.env
     environment:
@@ -64,6 +51,7 @@ services:
       - BROWSER_USER_DATA_BASE_PATH=/app/user_data
       - BROWSER_NEW_CHAT_PER_TASK=true
       - ENABLE_XVFB=1
+      - BROWSER_HEADLESS=false
       # OpenAI 凭据 (可选，用于自动登录)
       - OPENAI_EMAIL=${OPENAI_EMAIL:-}
       - OPENAI_PASSWORD=${OPENAI_PASSWORD:-}
