@@ -7,7 +7,10 @@ import {
 import { log } from "../lib/logger";
 import { getProviderConfig } from "../llm/providerConfig";
 import { generatePrompt, pickRandomGeoCopyType } from "../llm/prompt";
-import { requestChatCompletion } from "../llm/request";
+import {
+  requestChatCompletion,
+  requestChatCompletionStream,
+} from "../llm/request";
 
 export const registerCatalogRoutes = (app: any) =>
   app
@@ -35,10 +38,11 @@ export const registerCatalogRoutes = (app: any) =>
           copyType?: GeoCopyType;
           model: string;
           customPrompt?: string;
+          stream?: boolean;
         };
         set: any;
       }) => {
-        const { productId, model, customPrompt } = body;
+        const { productId, model, customPrompt, stream = false } = body;
         const copyType = body.copyType ?? pickRandomGeoCopyType();
 
         const product = mockProducts.find((p) => p.id === productId);
@@ -63,6 +67,24 @@ export const registerCatalogRoutes = (app: any) =>
         const startedAt = performance.now();
 
         try {
+          // 流式响应 - 直接透传原始 SSE
+          if (stream) {
+            const streamResponse = await requestChatCompletionStream(
+              config,
+              model,
+              prompt
+            );
+
+            return new Response(streamResponse, {
+              headers: {
+                "Content-Type": "text/event-stream",
+                "Cache-Control": "no-cache",
+                Connection: "keep-alive",
+              },
+            });
+          }
+
+          // 非流式响应
           const content = await requestChatCompletion(config, model, prompt);
           const durationMs = Math.round(performance.now() - startedAt);
           log("info", "LLM generation ok", {
@@ -101,6 +123,7 @@ export const registerCatalogRoutes = (app: any) =>
           ),
           model: t.String(),
           customPrompt: t.Optional(t.String()),
+          stream: t.Optional(t.Boolean()),
         }),
       }
     );
