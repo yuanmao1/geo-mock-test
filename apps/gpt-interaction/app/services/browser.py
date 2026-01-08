@@ -141,17 +141,9 @@ class ChatGPTBrowser(HumanBehaviorMixin):
         # Ensure user data directory exists
         self.user_data_path.mkdir(parents=True, exist_ok=True)
 
-        # Force remove lock file if it exists (prevents "Browser connection fails" error)
-        lock_file = self.user_data_path / "SingletonLock"
-        if lock_file.exists():
-            try:
-                lock_file.unlink()
-                logger.info(f"Removed stale lock file: {lock_file}")
-            except Exception as e:
-                logger.warning(f"Could not remove lock file: {e}")
-
         # Set user data path for session persistence
-        co.set_user_data_path(str(self.user_data_path))
+        logger.info(f"Using browser profile path: {self.user_data_path.absolute()}")
+        co.set_user_data_path(str(self.user_data_path.absolute()))
 
         # Headless mode (configurable)
         if settings.browser_headless:
@@ -178,7 +170,6 @@ class ChatGPTBrowser(HumanBehaviorMixin):
         co.set_argument('--window-size=1920,1080')
 
         # Automatically assign a free port to support concurrency
-        # This will set the port Chrome listens on and DrissionPage connects to
         co.auto_port()
 
         return co
@@ -192,15 +183,11 @@ class ChatGPTBrowser(HumanBehaviorMixin):
         logger.info(f"Initializing browser for user {self.user_id}")
 
         try:
-            # Try to restore session from S3 (skip for default user)
-            is_default_user = (self.user_id == settings.default_user_id)
-            if not is_default_user:
-                if self.storage.download_session(self.user_id, self.user_data_path):
-                    logger.info(f"Restored session for user {self.user_id} from S3")
-                else:
-                    logger.info(f"No remote session found for user {self.user_id}, starting fresh")
+            # Try to restore session from S3
+            if self.storage.download_session(self.user_id, self.user_data_path):
+                logger.info(f"Restored session for user {self.user_id} from S3")
             else:
-                logger.info("Skipping S3 download for default user (local only)")
+                logger.info(f"No remote session found for user {self.user_id}, starting fresh")
 
             options = self._create_browser_options()
             
@@ -227,8 +214,8 @@ class ChatGPTBrowser(HumanBehaviorMixin):
             logger.info("Navigating to ChatGPT...")
             self.page.get(self.CHATGPT_URL)
 
-            # Initial delay for page load
-            sync_human_delay(400, 800)
+            # Short delay for page load (reduced for speed)
+            sync_human_delay(300, 600)
 
             # Handle initial popups
             self._handle_popups()
@@ -241,6 +228,9 @@ class ChatGPTBrowser(HumanBehaviorMixin):
                     logger.info("CAPTCHA solved during initialization")
                 else:
                     raise CaptchaDetectedError(captcha_type)
+
+            # Log cookie status for debugging
+            self._log_cookie_status()
 
             # Check login status immediately
             is_logged_in = self.check_login_status()
@@ -290,13 +280,61 @@ class ChatGPTBrowser(HumanBehaviorMixin):
                 self.page = None
             raise BrowserException(f"Browser initialization failed: {e}")
 
+    def _log_cookie_status(self) -> None:
+        """Log cookie status for debugging session persistence issues."""
+        try:
+            # Get cookies via CDP
+            cookies = self.page.run_cdp('Network.getAllCookies').get('cookies', [])
+            
+            # Filter for ChatGPT/OpenAI related cookies
+            relevant_domains = ['chatgpt.com', 'openai.com', 'auth0.com', 'auth.openai.com']
+            session_cookies = []
+            
+            for cookie in cookies:
+                domain = cookie.get('domain', '')
+                name = cookie.get('name', '')
+                # Check if domain matches any relevant domain
+                if any(d in domain for d in relevant_domains):
+                    # Look for session-related cookies
+                    if any(key in name.lower() for key in ['session', 'token', 'auth', '__cf', '__secure']):
+                        session_cookies.append({
+                            'name': name,
+                            'domain': domain,
+                            'expires': cookie.get('expires', 'session'),
+                            'httpOnly': cookie.get('httpOnly', False),
+                            'secure': cookie.get('secure', False)
+                        })
+            
+            if session_cookies:
+                logger.info(f"Found {len(session_cookies)} session-related cookies:")
+                for c in session_cookies[:5]:  # Log first 5
+                    logger.debug(f"  Cookie: {c['name']} ({c['domain']}) expires={c['expires']}")
+            else:
+                logger.warning("No session cookies found - login may be required")
+                
+            # Also check local storage for auth tokens
+            try:
+                local_storage_check = self.page.run_js('''
+                    return {
+                        hasAccessToken: !!localStorage.getItem('accessToken'),
+                        hasAuth: Object.keys(localStorage).some(k => k.includes('auth') || k.includes('token'))
+                    };
+                ''')
+                if local_storage_check:
+                    logger.debug(f"LocalStorage auth status: {local_storage_check}")
+            except Exception:
+                pass
+                
+        except Exception as e:
+            logger.debug(f"Could not check cookie status: {e}")
+
     def _handle_popups(self) -> None:
         """Handle common popups that may appear."""
-        # Handle "Stay logged out" popup
+        # Handle "Stay logged out" popup (use short timeout to not block)
         for selector in [self.SELECTORS["stay_logged_out_en"], 
                         self.SELECTORS["stay_logged_out_cn"]]:
             try:
-                btn = self.page.ele(selector, timeout=3)
+                btn = self.page.ele(selector, timeout=1)  # Reduced from 3s
                 if btn:
                     logger.info("Handling 'Stay logged out' popup")
                     self.before_action("popup_dismiss")
@@ -568,6 +606,22 @@ class ChatGPTBrowser(HumanBehaviorMixin):
 
                 # Case B: Standard OpenAI Password
                 else:
+                    # Check if we're on the "Check your inbox" page (verification code page)
+                    # Need to click "Continue with password" / "使用密码继续" first
+                    use_password_btn = self.page.ele("text:使用密码继续", timeout=3) or \
+                                       self.page.ele("text:Continue with password", timeout=2) or \
+                                       self.page.ele("text:Use password", timeout=2) or \
+                                       self.page.ele("text:使用密码", timeout=2)
+                    
+                    if use_password_btn:
+                        logger.info("Found 'Continue with password' button, clicking...")
+                        try:
+                            self.page.actions.move_to(use_password_btn).click()
+                        except Exception:
+                            use_password_btn.click(by_js=True)
+                        sync_human_delay(800, 1500)
+                    
+                    # Now look for password input
                     password_input = self.page.ele("css:input[name='password']", timeout=10) or \
                                      self.page.ele("css:input[type='password']", timeout=10)
                     
@@ -577,14 +631,17 @@ class ChatGPTBrowser(HumanBehaviorMixin):
                         self._safe_fill_input(password_input, password)
                         self.after_action("login_password")
                         
-                        submit_btn = self.page.ele("text:Log in") or \
-                                     self.page.ele("text:Sign in") or \
-                                     self.page.ele("text:登录") or \
-                                     self.page.ele("css:button[type='submit']")
+                        # Look for submit button - prioritize "继续" button on password page
+                        submit_btn = self.page.ele("text=继续", timeout=3) or \
+                                     self.page.ele("text=Continue", timeout=2) or \
+                                     self.page.ele("text:Log in", timeout=2) or \
+                                     self.page.ele("text:Sign in", timeout=2) or \
+                                     self.page.ele("text:登录", timeout=2) or \
+                                     self.page.ele("css:button[type='submit']", timeout=2)
                         
                         if submit_btn:
                             self.page.actions.move_to(submit_btn).click()
-                            logger.info("Clicked Log in (OpenAI)")
+                            logger.info("Clicked Continue/Log in (OpenAI)")
                     else:
                         # Could be SSO or other flow
                         logger.warning("Password input not found (might be SSO)")
@@ -909,7 +966,7 @@ class ChatGPTBrowser(HumanBehaviorMixin):
         try:
             self.page.wait.ele_displayed(
                 self.SELECTORS["stop_button"],
-                timeout=30
+                timeout=15  # Reduced from 30s
             )
         except Exception:
             logger.debug("Stop button not detected, response may be quick")
@@ -928,14 +985,12 @@ class ChatGPTBrowser(HumanBehaviorMixin):
                     logger.warning(f"CAPTCHA detected during wait ({captcha_type}), attempting auto-solution...")
                     if self._attempt_captcha_solution(captcha_type):
                         logger.info("CAPTCHA solved, resuming wait")
-                        # Reset stop_seen might be needed if page refreshed? 
-                        # Assuming flow continues.
                     else:
                         raise CaptchaDetectedError(captcha_type)
 
-                if self.page.ele(self.SELECTORS["stop_button"]):
+                if self.page.ele(self.SELECTORS["stop_button"], timeout=0.5):
                     stop_seen = True
-                    time.sleep(2)
+                    time.sleep(0.5)  # Faster polling while generating
                     continue
 
                 text = self._get_latest_response_text()
@@ -946,22 +1001,23 @@ class ChatGPTBrowser(HumanBehaviorMixin):
                         stable_count = 0
                         last_text = text
 
-                    if stop_seen and stable_count >= 2:
+                    # Require 3 stable checks with faster polling
+                    if stop_seen and stable_count >= 3:
                         logger.info("Response generation completed")
                         return text
 
-                    if not stop_seen and stable_count >= 2:
+                    if not stop_seen and stable_count >= 3:
                         logger.info("Response detected without stop button")
                         return text
 
-                time.sleep(2)
+                time.sleep(0.8)  # Faster polling interval
             except Exception as e:
                 message = str(e)
                 if "连接已断开" in message or "disconnected" in message.lower():
                     logger.error("Page disconnected, aborting response wait")
                     return ""
                 logger.warning(f"Error during wait loop: {e}")
-                time.sleep(2)
+                time.sleep(0.5)
 
         logger.warning("Timeout waiting for response")
 
@@ -1065,10 +1121,10 @@ class ChatGPTBrowser(HumanBehaviorMixin):
             except Exception:
                 pass
             
-            # Find sources button
-            source_btn = self.page.ele('text:来源', timeout=3) or \
-                         self.page.ele('text:Sources', timeout=2) or \
-                         self.page.ele('@data-testid=source-button', timeout=2) or \
+            # Find sources button (use shorter timeouts to fail fast)
+            source_btn = self.page.ele('text:来源', timeout=2) or \
+                         self.page.ele('text:Sources', timeout=1) or \
+                         self.page.ele('@data-testid=source-button', timeout=1) or \
                          self.page.ele('text:个来源', timeout=1) or \
                          self.page.ele('text:sources', timeout=1)
             
@@ -1076,35 +1132,48 @@ class ChatGPTBrowser(HumanBehaviorMixin):
                 logger.debug("No sources button found")
                 return []
             
+            # Check if button is clickable (has position and size)
+            try:
+                if not source_btn.states.is_displayed:
+                    logger.debug("Sources button not displayed, skipping")
+                    return []
+            except Exception:
+                pass
+            
             logger.debug("Found sources button, clicking to expand...")
             
             # Click to open sidebar
             sidebar_title = None
+            click_succeeded = False
             for attempt in range(2):
                 try:
                     if attempt == 0:
                         self.page.actions.move_to(source_btn).click()
                     else:
                         source_btn.click(by_js=True)
+                    click_succeeded = True
+                    break
                 except Exception as e:
                     logger.debug(f"Click attempt {attempt} failed: {e}")
                     continue
-                
-                # Wait for sidebar to appear
-                for _ in range(10):
-                    sync_human_delay(400, 600)
-                    # Look for sidebar title
-                    candidates = self.page.eles('text:引用') or self.page.eles('text:Sources')
-                    for t in reversed(candidates):
-                        try:
-                            if t.states.is_displayed and len(t.text) <= 20:
-                                sidebar_title = t
-                                break
-                        except Exception:
-                            continue
-                    if sidebar_title:
-                        break
-                
+            
+            # If all click attempts failed, return early
+            if not click_succeeded:
+                logger.debug("All click attempts failed, skipping sources extraction")
+                return []
+            
+            # Wait for sidebar to appear (reduced wait time)
+            for _ in range(5):  # Reduced from 10 to 5 iterations
+                sync_human_delay(300, 500)  # Reduced wait time
+                # Look for sidebar title
+                candidates = self.page.eles('text:引用') or self.page.eles('text:Sources')
+                for t in reversed(candidates):
+                    try:
+                        if t.states.is_displayed and len(t.text) <= 20:
+                            sidebar_title = t
+                            break
+                    except Exception:
+                        continue
                 if sidebar_title:
                     break
             
@@ -1473,17 +1542,37 @@ class ChatGPTBrowser(HumanBehaviorMixin):
         """Close the browser and save session."""
         if self.page:
             try:
+                # Flush cookies by triggering a storage event
+                try:
+                    logger.info("Flushing browser session before close...")
+                    # Execute JS to flush any pending storage writes
+                    self.page.run_js('''
+                        // Trigger storage flush
+                        if (window.localStorage) {
+                            localStorage.setItem('_flush_', Date.now().toString());
+                            localStorage.removeItem('_flush_');
+                        }
+                    ''')
+                    time.sleep(0.5)
+                    # Navigate to about:blank to trigger cookie flush
+                    self.page.get("about:blank")
+                    # Give browser time to sync cookies and session data to disk
+                    time.sleep(1.5)
+                except Exception as e:
+                    logger.warning(f"Error during session flush: {e}")
+                
                 self.page.quit()
                 
-                # Save session to S3 after closing browser (skip for default user)
-                if self._is_initialized and self.user_id != settings.default_user_id:
+                # Wait a moment for browser to fully close and release file locks
+                time.sleep(0.5)
+                
+                # Save session to S3 after closing browser
+                if self._is_initialized:
                     logger.info(f"Saving session for user {self.user_id} to S3...")
                     if self.storage.upload_session(self.user_id, self.user_data_path):
                         logger.info("Session saved successfully")
                     else:
                         logger.error("Failed to save session")
-                elif self.user_id == settings.default_user_id:
-                     logger.info("Skipping S3 upload for default user (local only)")
                         
             except Exception as e:
                 logger.warning(f"Error closing browser: {e}")

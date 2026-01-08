@@ -110,6 +110,7 @@ class Settings(BaseSettings):
         """
         uid = user_id or self.default_user_id
         base_path = Path(self.browser_user_data_base_path)
+        # Returns the directory containing the "Default" folder
         return base_path / uid / "chatgpt_data"
 
 

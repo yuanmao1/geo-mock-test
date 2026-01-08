@@ -16,6 +16,7 @@ from app.core.exceptions import AppException, TaskException
 from app.core.logging import setup_logging
 from app.db import close_db, init_db
 from app.services.executor import task_executor, task_worker
+from app.services.storage import S3SessionManager
 
 settings = get_settings()
 
@@ -43,6 +44,21 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     # Initialize database
     logger.info("Initializing database...")
     await init_db()
+
+    # Upload default user session to S3 on startup (if exists locally)
+    logger.info("Syncing default user session to S3...")
+    try:
+        storage = S3SessionManager()
+        default_user_path = settings.get_user_data_path(settings.default_user_id)
+        if default_user_path.exists():
+            if storage.upload_session(settings.default_user_id, default_user_path):
+                logger.info(f"Default user session uploaded to S3 from {default_user_path}")
+            else:
+                logger.warning("Failed to upload default user session to S3")
+        else:
+            logger.info(f"No local session found for default user at {default_user_path}")
+    except Exception as e:
+        logger.warning(f"Error syncing default user session to S3: {e}")
 
     # Start task worker
     logger.info("Starting task worker...")

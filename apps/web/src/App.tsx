@@ -2103,11 +2103,11 @@ const App = () => {
           {/* Navigation Bar - hidden in AI perspective */}
           <Routes>
             <Route element={<MainLayout />}>
-              <Route path="/" element={<HomePage />} />
-              <Route path="/product/:id" element={<ProductDetailPage />} />
-              <Route path="/stream-test" element={<StreamTest />} />
+              <Route path="/public/ecommerce/" element={<HomePage />} />
+              <Route path="/public/ecommerce/product/:id" element={<ProductDetailPage />} />
+              <Route path="/public/ecommerce/stream-test" element={<StreamTest />} />
             </Route>
-            <Route path="/monitor/*" element={<GeoMonitorApp />} />
+            <Route path="/public/ecommerce/monitor/*" element={<GeoMonitorApp />} />
           </Routes>
           
           <GeoControlCenter />

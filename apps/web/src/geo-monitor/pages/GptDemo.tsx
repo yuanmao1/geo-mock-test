@@ -4,7 +4,6 @@ import { Card, Button, Spinner } from '../components/ui';
 import { Icons } from '../components/Icons';
 
 const API_PREFIX = (import.meta as any).env?.VITE_API_PREFIX || "/api";
-const GPT_API_BASE = (import.meta as any).env?.VITE_GPT_API_BASE || "http://localhost:8000";
 
 interface Message {
   role: 'user' | 'assistant' | 'system';
@@ -45,7 +44,7 @@ const GptDemo: React.FC = () => {
 
   const checkConnection = async () => {
     try {
-      const res = await fetch(`${GPT_API_BASE}/health`);
+      const res = await fetch(`${API_PREFIX}/monitor/health`);
       const data = await res.json();
       setConnectionStatus(data.status === 'ok' ? 'connected' : 'disconnected');
     } catch {
