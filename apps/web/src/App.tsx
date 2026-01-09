@@ -767,6 +767,12 @@ const GeoControlCenter = () => {
     ? products.find((p) => p.id === currentProductId)
     : null;
 
+  // 如果在 monitor 路由下，不显示 GEO 控制中心
+  const isMonitorRoute = location.pathname.includes('/monitor');
+  if (isMonitorRoute) {
+    return null;
+  }
+
   // 只有全量生成时才显示全局进度弹窗（generatingProductId 为 null 时表示全量生成）
   if (isGenerating && !generatingProductId) {
     return (

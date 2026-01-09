@@ -115,8 +115,13 @@ async def get_task(
         task = await task_service.get_task(task_id)
         result = task.model_dump()
         
-        # Add screenshot if requested and task is running
-        if include_screenshot and task.status == TaskStatus.RUNNING:
+        # Add screenshot if requested and task has an active browser
+        # This includes running, waiting_login, and waiting_captcha states
+        if include_screenshot and task.status in (
+            TaskStatus.RUNNING, 
+            TaskStatus.WAITING_LOGIN, 
+            TaskStatus.WAITING_CAPTCHA
+        ):
             screenshot = task_executor.get_task_screenshot(task_id)
             result["screenshot"] = screenshot
         

@@ -31,16 +31,6 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({
   }, [runId]);
 
   const fetchData = async () => {
-    // 如果有初始数据且包含分析结果，直接使用
-    if (initialData?.analysis_result) {
-      setData(initialData);
-      if (initialData.queries && initialData.queries.length > 0) {
-        setActiveQueryTab(initialData.queries[0].id);
-      }
-      setLoading(false);
-      return;
-    }
-    
     setLoading(true);
     
     // Mock模式
@@ -59,7 +49,7 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({
       return;
     }
     
-    // 真实模式
+    // 真实模式 - 始终从后端获取完整数据（包括 queries）
     try {
       const endpoint = type === 'category' 
         ? `${API_PREFIX}/pipelines/category/${runId}`
@@ -75,6 +65,13 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({
       }
     } catch (e) {
       console.error('Failed to fetch data:', e);
+      // 如果请求失败但有初始数据，回退使用初始数据
+      if (initialData) {
+        setData(initialData);
+        if (initialData.queries && initialData.queries.length > 0) {
+          setActiveQueryTab(initialData.queries[0].id);
+        }
+      }
     }
     setLoading(false);
   };
@@ -154,7 +151,10 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({
 
   // 计算统计数据
   const totalMentions = brandData.reduce((sum: number, b: any) => sum + (b.share || 0), 0);
-  const completedQueries = queries.filter((q: any) => q.status === 'completed').length;
+  // 如果整个 run 已完成，完成查询数等于查询总数；否则统计各 query 的 completed 状态
+  const completedQueries = data.status === 'completed' 
+    ? queries.length 
+    : queries.filter((q: any) => q.status === 'completed').length;
 
   const getSentimentColor = (sentiment: string) => {
     if (sentiment === 'positive' || sentiment?.toLowerCase().includes('positive')) return COLORS.accent;
