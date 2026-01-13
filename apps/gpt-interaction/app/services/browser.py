@@ -75,6 +75,7 @@ class ChatGPTBrowser(HumanBehaviorMixin):
     """
 
     CHATGPT_URL = "https://chatgpt.com"
+    AUTH_URL = "https://chatgpt.com/auth/login"
 
     # Selectors (may need updates if ChatGPT UI changes)
     SELECTORS = {
@@ -237,7 +238,7 @@ class ChatGPTBrowser(HumanBehaviorMixin):
             
             # Check for Guest Mode if not fully logged in
             is_guest_mode = False
-            if not is_logged_in:
+            if not is_logged_in and settings.enable_guest:
                 textarea = self.page.ele(self.SELECTORS["prompt_textarea"], timeout=5) or \
                            self.page.ele('css:textarea[id="prompt-textarea"]') or \
                            self.page.ele('css:div[contenteditable="true"]')
@@ -246,21 +247,27 @@ class ChatGPTBrowser(HumanBehaviorMixin):
                     is_guest_mode = True
 
             if not is_logged_in and not is_guest_mode:
-                logger.info("Login check failed on startup, attempting auto-login...")
+                if settings.enable_guest:
+                    logger.info("Login check failed on startup, attempting auto-login...")
+                else:
+                    logger.info("Login check failed (or guest mode disabled), attempting auto-login...")
                 
                 # Try auto-login if credentials are configured
-                if settings.openai_email and settings.openai_password and not self._login_attempted:
-                    self._login_attempted = True
+                if settings.openai_email and settings.openai_password:
+                    # Note: We don't check self._login_attempted here because 
+                    # if initialize() is called, we want to try fresh.
                     if self.perform_auto_login():
                         logger.info("Auto-login successful")
-                        return
+                        # re-verify login status after auto-login
+                        if self.check_login_status():
+                            return
+                        else:
+                            logger.error("Auto-login claims success but session not detected")
                     else:
                         logger.error("Auto-login failed")
                 
-                # If auto-login failed or not configured, raise error
-                # But allow ignoring login check if specifically configured or strictly needed?
-                # For now, strict check unless guest mode
-                if self.page.ele(self.SELECTORS["login_button"]) or "auth.openai.com" in self.page.url:
+                # Check for login popup/button one last time
+                if self.check_login_popup() or self.page.ele(self.SELECTORS["login_button"]) or "auth.openai.com" in self.page.url:
                     raise LoginRequiredError(self.user_id)
                 
                 raise LoginRequiredError(self.user_id)
@@ -612,6 +619,10 @@ class ChatGPTBrowser(HumanBehaviorMixin):
                      logger.info("Clicking Log in button...")
                      login_btn.click()
                      sync_human_delay(800, 1200)
+                 else:
+                     logger.info(f"Navigating directly to AUTH_URL: {self.AUTH_URL}")
+                     self.page.get(self.AUTH_URL)
+                     sync_human_delay(1500, 2500)
             
             # 2. Enter Email
             # Try multiple selectors for email input
@@ -1465,7 +1476,7 @@ class ChatGPTBrowser(HumanBehaviorMixin):
             
             # Determine if we can proceed (Logged in OR Guest mode with textarea)
             can_proceed = is_logged_in
-            if not can_proceed:
+            if not can_proceed and settings.enable_guest:
                 # Check if guest mode is available (textarea present despite not being logged in)
                 textarea = self.page.ele(self.SELECTORS["prompt_textarea"], timeout=5) or \
                            self.page.ele('css:textarea[id="prompt-textarea"]') or \

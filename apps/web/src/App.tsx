@@ -448,7 +448,7 @@ const ProductCard = ({
 
   return (
     <Link
-      to={`/product/${product.id}`}
+      to={`/public/ecommerce/product/${product.id}`}
       className="rounded-xl shadow-sm overflow-hidden border transition-all hover:shadow-md group flex flex-col bg-white border-gray-100 text-gray-900"
     >
       <div className="relative h-64 overflow-hidden">

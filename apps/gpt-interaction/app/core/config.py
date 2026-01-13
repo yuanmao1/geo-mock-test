@@ -59,6 +59,10 @@ class Settings(BaseSettings):
         default=False,
         description="Start a new chat for each task. Disabled by default since each task opens a fresh browser."
     )
+    enable_guest: bool = Field(
+        default=False,
+        description="Allow guest mode (chat without login). If False, will attempt to login even if guest mode is available."
+    )
 
     # User management (extensible for future auth)
     default_user_id: str = Field(

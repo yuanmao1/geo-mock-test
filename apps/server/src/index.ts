@@ -12,7 +12,7 @@ const app =
         .use(cors())
         .derive(() => ({startTime: performance.now()}))
         .onAfterHandle(({request, set, startTime}) => {
-          const pathname = new URL(request.url).pathname;
+          const pathname = new URL(request.url, 'http://localhost').pathname;
           if (!pathname.startsWith(config.apiPrefix)) return;
 
           const durationMs =
@@ -25,7 +25,7 @@ const app =
           });
         })
         .onError(({request, error, code, set, startTime}) => {
-          const pathname = new URL(request.url).pathname;
+          const pathname = new URL(request.url, 'http://localhost').pathname;
           const durationMs =
               Math.round(performance.now() - (startTime ?? performance.now()));
           log('error', 'request error', {
