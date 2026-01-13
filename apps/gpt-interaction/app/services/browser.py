@@ -493,6 +493,98 @@ class ChatGPTBrowser(HumanBehaviorMixin):
             logger.warning(f"Error checking login status: {e}")
             return False
 
+    def check_login_popup(self) -> bool:
+        """
+        Check if a login popup/modal has appeared.
+        This is different from check_login_status - it detects sudden login prompts
+        that may appear during interaction (e.g., rate limits, session expiry).
+
+        Returns:
+            True if a login popup is detected, False otherwise.
+        """
+        try:
+            # Common login popup selectors
+            login_popup_selectors = [
+                'text:Log in to continue',
+                'text:登录以继续',
+                'text:Sign up to continue',
+                'text:注册以继续',
+                'text:You\'ve reached the limit',
+                'text:您已达到限制',
+                'text:Create an account',
+                'text:创建账户',
+                'text:Sign in to continue',
+                'text:登录继续',
+                # Modal dialog selectors
+                'css:div[role="dialog"] button:has-text("Log in")',
+                'css:div[role="dialog"] button:has-text("登录")',
+                'css:div[data-state="open"] button:has-text("Log in")',
+            ]
+            
+            for selector in login_popup_selectors:
+                try:
+                    ele = self.page.ele(selector, timeout=0.5)
+                    if ele and ele.states.is_displayed:
+                        logger.warning(f"Login popup detected: {selector}")
+                        return True
+                except Exception:
+                    continue
+            
+            # Check if redirected to auth page
+            if "auth.openai.com" in self.page.url:
+                logger.warning("Redirected to auth page - login required")
+                return True
+                
+            return False
+            
+        except Exception as e:
+            logger.debug(f"Error checking login popup: {e}")
+            return False
+
+    def _dismiss_login_popup(self) -> bool:
+        """
+        Try to dismiss a login popup if possible (e.g., by clicking outside or 'X' button).
+        
+        Returns:
+            True if popup was dismissed, False otherwise.
+        """
+        try:
+            # Try to find and click close button
+            close_selectors = [
+                'css:button[aria-label="Close"]',
+                'css:button[aria-label="关闭"]',
+                '@@tag:button@@aria-label=Close',
+                '@@tag:button@@aria-label=关闭',
+                'css:div[role="dialog"] button:has(svg)',  # Common pattern for close buttons with icons
+            ]
+            
+            for selector in close_selectors:
+                try:
+                    btn = self.page.ele(selector, timeout=1)
+                    if btn and btn.states.is_displayed:
+                        logger.info(f"Dismissing login popup via close button")
+                        btn.click()
+                        sync_human_delay(300, 600)
+                        return True
+                except Exception:
+                    continue
+            
+            # Try pressing Escape key
+            try:
+                self.page.actions.key_down('Escape').key_up('Escape')
+                sync_human_delay(300, 600)
+                if not self.check_login_popup():
+                    logger.info("Dismissed login popup via Escape key")
+                    return True
+            except Exception:
+                pass
+                
+            return False
+            
+        except Exception as e:
+            logger.debug(f"Error dismissing login popup: {e}")
+            return False
+
     def perform_auto_login(self) -> bool:
         """
         Attempt automatic login using configured credentials.
@@ -959,6 +1051,9 @@ class ChatGPTBrowser(HumanBehaviorMixin):
 
         Returns:
             The response text.
+            
+        Raises:
+            LoginRequiredError: If a login popup appears during response wait.
         """
         logger.info("Waiting for response...")
 
@@ -977,9 +1072,22 @@ class ChatGPTBrowser(HumanBehaviorMixin):
         last_text = ""
         stable_count = 0
         stop_seen = False
+        login_check_interval = 0
 
         while time.time() - start_time < timeout:
             try:
+                # Check for login popup periodically (every ~5 iterations)
+                login_check_interval += 1
+                if login_check_interval >= 5:
+                    login_check_interval = 0
+                    if self.check_login_popup():
+                        logger.warning("Login popup detected during response wait")
+                        # Try to dismiss it first
+                        if self._dismiss_login_popup():
+                            logger.info("Login popup dismissed, continuing...")
+                        else:
+                            raise LoginRequiredError(self.user_id)
+
                 captcha_type = self.check_captcha()
                 if captcha_type:
                     logger.warning(f"CAPTCHA detected during wait ({captcha_type}), attempting auto-solution...")
@@ -1387,9 +1495,29 @@ class ChatGPTBrowser(HumanBehaviorMixin):
             # Handle any popups that appeared
             self._handle_popups()
 
+            # Check for login popup before proceeding
+            if self.check_login_popup():
+                logger.warning("Login popup detected before sending message")
+                if not self._dismiss_login_popup():
+                    return ChatResponse(
+                        success=False,
+                        requires_login=True,
+                        error="Login popup appeared before sending message"
+                    )
+
             # Enable search if requested
             if enable_search:
                 self._enable_search()
+
+            # Check for login popup again after enabling search
+            if self.check_login_popup():
+                logger.warning("Login popup detected after enabling search")
+                if not self._dismiss_login_popup():
+                    return ChatResponse(
+                        success=False,
+                        requires_login=True,
+                        error="Login popup appeared after enabling search"
+                    )
 
             # Type and send message
             self._type_message_humanlike(message)
@@ -1397,10 +1525,7 @@ class ChatGPTBrowser(HumanBehaviorMixin):
 
             # Check if sending triggered a login prompt (e.g. Guest limit reached)
             sync_human_delay(200, 500)
-            if self.page.ele('text:Log in to continue', timeout=2) or \
-               self.page.ele('text:登录以继续', timeout=2) or \
-               self.page.ele('text:Sign up to continue', timeout=2) or \
-               ("auth.openai.com" in self.page.url):
+            if self.check_login_popup():
                 return ChatResponse(
                     success=False,
                     requires_login=True,

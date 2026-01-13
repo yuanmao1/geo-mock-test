@@ -138,6 +138,10 @@ class TaskExecutor:
                 elif response.requires_captcha:
                     return (False, f"CAPTCHA detected: {response.captcha_type}", "CAPTCHA_DETECTED", None)
                 else:
+                    # Check if failure was due to a login popup that wasn't caught
+                    if browser and browser.check_login_popup():
+                        logger.warning(f"Task {task_id} failed due to uncaught login popup")
+                        return (False, "Login popup appeared during task execution", "LOGIN_REQUIRED", None)
                     return (False, response.error or "Unknown error", "EXECUTION_ERROR", None)
 
             else:
@@ -145,7 +149,20 @@ class TaskExecutor:
 
         except Exception as e:
             logger.error(f"Task {task_id} failed with exception: {e}")
-            return (False, str(e), "EXCEPTION", None)
+            # Check if exception was due to login popup
+            error_msg = str(e)
+            if browser:
+                try:
+                    if browser.check_login_popup():
+                        logger.warning(f"Task {task_id} exception caused by login popup")
+                        return (False, "Login popup appeared during task execution", "LOGIN_REQUIRED", None)
+                except Exception:
+                    pass
+            # Check error message for login-related keywords
+            login_keywords = ['login', 'Login', '登录', 'auth', 'authenticate', 'sign in', 'Sign in']
+            if any(kw in error_msg for kw in login_keywords):
+                return (False, error_msg, "LOGIN_REQUIRED", None)
+            return (False, error_msg, "EXCEPTION", None)
 
         finally:
             # Remove browser from tracking

@@ -56,8 +56,8 @@ class Settings(BaseSettings):
         description="Base path for user browser data directories"
     )
     browser_new_chat_per_task: bool = Field(
-        default=True,
-        description="Start a new chat for each task to avoid reusing the last conversation"
+        default=False,
+        description="Start a new chat for each task. Disabled by default since each task opens a fresh browser."
     )
 
     # User management (extensible for future auth)
