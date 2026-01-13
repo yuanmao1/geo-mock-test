@@ -1486,11 +1486,19 @@ class ChatGPTBrowser(HumanBehaviorMixin):
                     can_proceed = True
             
             if not can_proceed:
-                return ChatResponse(
-                    success=False,
-                    requires_login=True,
-                    error="Login required"
-                )
+                # Attempt auto-login if configured
+                if settings.openai_email and settings.openai_password:
+                    logger.info("Login required in send_message, attempting auto-login...")
+                    if self.perform_auto_login():
+                        if self.check_login_status():
+                            can_proceed = True
+                
+                if not can_proceed:
+                    return ChatResponse(
+                        success=False,
+                        requires_login=True,
+                        error="Login required"
+                    )
 
             # Wait for textarea to be ready
             if settings.browser_new_chat_per_task:
@@ -1510,11 +1518,17 @@ class ChatGPTBrowser(HumanBehaviorMixin):
             if self.check_login_popup():
                 logger.warning("Login popup detected before sending message")
                 if not self._dismiss_login_popup():
-                    return ChatResponse(
-                        success=False,
-                        requires_login=True,
-                        error="Login popup appeared before sending message"
-                    )
+                    # Attempt auto-login if popup persists
+                    if settings.openai_email and settings.openai_password:
+                        logger.info("Login popup persistent, attempting auto-login...")
+                        self.perform_auto_login()
+                    
+                    if self.check_login_popup():
+                        return ChatResponse(
+                            success=False,
+                            requires_login=True,
+                            error="Login popup appeared before sending message"
+                        )
 
             # Enable search if requested
             if enable_search:
@@ -1524,11 +1538,17 @@ class ChatGPTBrowser(HumanBehaviorMixin):
             if self.check_login_popup():
                 logger.warning("Login popup detected after enabling search")
                 if not self._dismiss_login_popup():
-                    return ChatResponse(
-                        success=False,
-                        requires_login=True,
-                        error="Login popup appeared after enabling search"
-                    )
+                     # Attempt auto-login if popup persists
+                    if settings.openai_email and settings.openai_password:
+                        logger.info("Login popup persistent, attempting auto-login...")
+                        self.perform_auto_login()
+
+                    if self.check_login_popup():
+                        return ChatResponse(
+                            success=False,
+                            requires_login=True,
+                            error="Login popup appeared after enabling search"
+                        )
 
             # Type and send message
             self._type_message_humanlike(message)
