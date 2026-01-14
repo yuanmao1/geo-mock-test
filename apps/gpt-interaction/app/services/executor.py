@@ -39,6 +39,7 @@ class TaskExecutor:
         self._running_task_users: dict[str, str] = {}
         self._running_by_user: dict[str, int] = {}
         self._running_browsers: dict[str, ChatGPTBrowser] = {}  # task_id -> browser instance
+        self._user_browsers: dict[str, ChatGPTBrowser] = {}  # user_id -> browser instance (persistent)
         self._browsers_lock = threading.Lock()
         self._shutdown = False
 
@@ -103,8 +104,16 @@ class TaskExecutor:
 
         browser = None
         try:
-            # Get browser for user
-            browser = ChatGPTBrowser(user_id)
+            # Get or create browser for user (reuse across tasks)
+            with self._browsers_lock:
+                if user_id in self._user_browsers:
+                    browser = self._user_browsers[user_id]
+                    logger.info(f"Reusing existing browser for user {user_id}")
+                else:
+                    browser = ChatGPTBrowser(user_id)
+                    self._user_browsers[user_id] = browser
+                    logger.info(f"Created new browser for user {user_id}")
+            
             browser.initialize()
 
             # Track browser instance for screenshot capability
@@ -165,11 +174,10 @@ class TaskExecutor:
             return (False, error_msg, "EXCEPTION", None)
 
         finally:
-            # Remove browser from tracking
+            # Remove browser from tracking (but don't close it - keep for reuse)
             with self._browsers_lock:
                 self._running_browsers.pop(task_id, None)
-            if browser:
-                browser.close()
+            # Note: browser is NOT closed here - it's kept alive in _user_browsers for reuse
 
     async def _on_task_complete(
         self,
@@ -339,6 +347,16 @@ class TaskExecutor:
                 *self._running_tasks.values(),
                 return_exceptions=True
             )
+
+        # Close all persistent browsers and save sessions
+        with self._browsers_lock:
+            for user_id, browser in list(self._user_browsers.items()):
+                try:
+                    logger.info(f"Closing browser for user {user_id}...")
+                    browser.close()  # close() will check login status internally
+                except Exception as e:
+                    logger.error(f"Error closing browser for user {user_id}: {e}")
+            self._user_browsers.clear()
 
         self._executor.shutdown(wait=wait)
         logger.info("Task executor shutdown complete")

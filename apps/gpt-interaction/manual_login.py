@@ -59,21 +59,20 @@ def create_browser_options(user_data_path: Path) -> ChromiumOptions:
     # Non-headless for manual login
     # co.set_argument('--headless=new')  # Commented out - we need to see the browser
 
-    # Standard flags (Commented out to match demo.py)
-    # co.set_argument("--no-sandbox")
-    # co.set_argument("--disable-dev-shm-usage")
-    # co.set_argument("--disable-gpu")
-    # co.set_argument("--remote-allow-origins=*")
+    # Match browser.py flags for cookie compatibility
+    co.set_argument("--no-sandbox")
+    co.set_argument("--disable-dev-shm-usage")
+    co.set_argument("--disable-gpu")
+    co.set_argument("--disable-software-rasterizer")
+    co.set_argument("--remote-allow-origins=*")
+    # co.set_argument("--password-store=basic")  # Removed as it caused issues
 
-    # Stealth options (Commented out to match demo.py)
-    # co.set_argument('--disable-blink-features=AutomationControlled')
-    # co.set_argument('--no-first-run')
-    # co.set_argument('--no-default-browser-check')
-
-    # Cookie persistence
-    # co.set_argument('--enable-features=NetworkService,NetworkServiceInProcess')
+    # Specific binary path (match browser.py)
+    co.set_argument('--disable-blink-features=AutomationControlled')
+    co.set_argument('--no-first-run')
+    co.set_argument('--no-default-browser-check')
     
-    # Window size
+    # Window size (match browser.py)
     co.set_argument('--window-size=1280,900')
 
     return co
@@ -200,7 +199,45 @@ def main():
                 for c in cookie_info['session_cookies'][:5]:
                     print(f"    - {c['name']} ({c['domain']})")
             print()
-            input("Press Enter to close the browser...")
+            
+            input("Press Enter to close the browser and upload session to S3...")
+            
+            print("Closing browser...")
+            page.quit()
+            print("Browser closed.")
+            time.sleep(3)  # Increased wait time to 3s
+            
+            # Debug file sizes
+            try:
+                cookies_file = user_data_path / "Default" / "Cookies"
+                local_state_file = user_data_path / "Local State"
+                if cookies_file.exists():
+                    print(f"DEBUG: Cookies file size: {cookies_file.stat().st_size} bytes")
+                else:
+                    print("DEBUG: Cookies file NOT FOUND")
+                    
+                if local_state_file.exists():
+                    print(f"DEBUG: Local State file size: {local_state_file.stat().st_size} bytes")
+                else:
+                    print("DEBUG: Local State file NOT FOUND")
+            except Exception as e:
+                print(f"DEBUG: Error checking file sizes: {e}")
+
+            # S3 Backup (after browser close)
+            if settings.s3_enable_backup:
+                print("Backing up session to S3...")
+                try:
+                    from app.services.storage import S3SessionManager
+                    storage = S3SessionManager()
+                    if storage.upload_session(user_id, user_data_path):
+                        print("✓ Session uploaded to S3")
+                    else:
+                        print("✗ Failed to upload session to S3")
+                except Exception as e:
+                    print(f"✗ Error uploading to S3: {e}")
+            else:
+                print("S3 backup disabled (ENABLE_S3_BACKUP=false)")
+                
         else:
             print()
             print("=" * 60)
@@ -245,13 +282,35 @@ def main():
                 print("Waiting a few seconds to ensure cookies are saved...")
                 time.sleep(5)
                 
-                print()
-                print("✓ Session saved successfully!")
+                input("Press Enter to close the browser and upload session to S3...")
+                
+                print("Closing browser...")
+                page.quit()
+                print("Browser closed.")
+                time.sleep(2)
+                
+                print("✓ Session saved locally!")
                 print(f"  Location: {user_data_path.absolute()}")
+                print()
+                
+                # S3 Backup (after browser close)
+                if settings.s3_enable_backup:
+                    print("Backing up session to S3...")
+                    try:
+                        from app.services.storage import S3SessionManager
+                        storage = S3SessionManager()
+                        if storage.upload_session(user_id, user_data_path):
+                            print("✓ Session uploaded to S3")
+                        else:
+                            print("✗ Failed to upload session to S3")
+                    except Exception as e:
+                        print(f"✗ Error uploading to S3: {e}")
+                else:
+                    print("S3 backup disabled (ENABLE_S3_BACKUP=false)")
+                
                 print()
                 print("You can now run the main service and it will use this session.")
                 print()
-                input("Press Enter to close the browser...")
             else:
                 print()
                 print("✗ Login timeout!")

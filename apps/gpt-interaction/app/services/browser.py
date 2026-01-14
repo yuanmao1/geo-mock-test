@@ -156,6 +156,7 @@ class ChatGPTBrowser(HumanBehaviorMixin):
         co.set_argument("--disable-gpu")
         co.set_argument("--disable-software-rasterizer")
         co.set_argument("--remote-allow-origins=*")
+        # co.set_argument("--password-store=basic")  # Removed as it caused issues
 
         # Specific binary path if needed
         chrome_bin = os.environ.get("CHROME_BIN") or "/usr/bin/google-chrome"
@@ -168,15 +169,29 @@ class ChatGPTBrowser(HumanBehaviorMixin):
         co.set_argument('--no-default-browser-check')
 
         # Window size for consistent behavior
-        co.set_argument('--window-size=1920,1080')
+        co.set_argument('--window-size=1280,900')
 
         # Automatically assign a free port to support concurrency
-        co.auto_port()
+        # co.auto_port()  # Removed to avoid detection issues and match manual_login exactly
 
         return co
 
     def initialize(self) -> None:
         """Initialize browser and navigate to ChatGPT."""
+        # Check if page exists but is disconnected
+        if self.page:
+            try:
+                # Try to access page to see if connection is alive
+                _ = self.page.url
+            except Exception as e:
+                logger.warning(f"Detected stale browser connection: {e}. Cleaning up...")
+                try:
+                    self.page.quit()
+                except Exception:
+                    pass
+                self.page = None
+                self._is_initialized = False
+        
         if self._is_initialized and self.page:
             logger.info(f"Browser already initialized for user {self.user_id}")
             return
@@ -184,11 +199,17 @@ class ChatGPTBrowser(HumanBehaviorMixin):
         logger.info(f"Initializing browser for user {self.user_id}")
 
         try:
-            # Try to restore session from S3
-            if self.storage.download_session(self.user_id, self.user_data_path):
-                logger.info(f"Restored session for user {self.user_id} from S3")
+            # Check if local session already exists
+            local_session_exists = (self.user_data_path / "Default" / "Cookies").exists()
+            
+            if local_session_exists:
+                logger.info(f"Local session found for user {self.user_id}, skipping S3 download to preserve it")
             else:
-                logger.info(f"No remote session found for user {self.user_id}, starting fresh")
+                # Try to restore session from S3
+                if self.storage.download_session(self.user_id, self.user_data_path):
+                    logger.info(f"Restored session for user {self.user_id} from S3")
+                else:
+                    logger.info(f"No remote session found for user {self.user_id}, starting fresh")
 
             options = self._create_browser_options()
             
@@ -1698,6 +1719,13 @@ class ChatGPTBrowser(HumanBehaviorMixin):
         """Close the browser and save session."""
         if self.page:
             try:
+                # Check if user is logged in before saving
+                is_logged_in = False
+                try:
+                    is_logged_in = self.check_login_status()
+                except Exception as e:
+                    logger.debug(f"Could not check login status before close: {e}")
+                
                 # Flush cookies by triggering a storage event
                 try:
                     logger.info("Flushing browser session before close...")
@@ -1722,13 +1750,15 @@ class ChatGPTBrowser(HumanBehaviorMixin):
                 # Wait a moment for browser to fully close and release file locks
                 time.sleep(0.5)
                 
-                # Save session to S3 after closing browser
-                if self._is_initialized:
+                # Save session to S3 after closing browser (only if logged in)
+                if self._is_initialized and is_logged_in:
                     logger.info(f"Saving session for user {self.user_id} to S3...")
                     if self.storage.upload_session(self.user_id, self.user_data_path):
                         logger.info("Session saved successfully")
                     else:
                         logger.error("Failed to save session")
+                elif not is_logged_in:
+                    logger.info(f"User {self.user_id} not logged in, skipping S3 upload")
                         
             except Exception as e:
                 logger.warning(f"Error closing browser: {e}")
