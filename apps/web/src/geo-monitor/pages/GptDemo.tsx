@@ -136,18 +136,6 @@ const GptDemo: React.FC = () => {
           setCurrentTask(null);
           setCurrentScreenshot(null);
           return;
-        } else if (data.status === 'waiting_login') {
-          setMessages(prev => [...prev, {
-            role: 'system',
-            content: '需要登录 ChatGPT，请在浏览器窗口中完成登录',
-            timestamp: new Date()
-          }]);
-        } else if (data.status === 'waiting_captcha') {
-          setMessages(prev => [...prev, {
-            role: 'system',
-            content: '需要完成验证码，请在浏览器窗口中操作',
-            timestamp: new Date()
-          }]);
         }
 
         // 每5秒轮询一次
@@ -418,8 +406,8 @@ const GptDemo: React.FC = () => {
                     }}>
                       {currentTask.status === 'running' ? '正在获取回答...' 
                         : currentTask.status === 'pending' ? '任务排队中...'
-                        : currentTask.status === 'waiting_login' ? '等待登录...'
-                        : currentTask.status === 'waiting_captcha' ? '等待验证码...'
+                        : currentTask.status === 'waiting_login' ? '等待服务端登录...'
+                        : currentTask.status === 'waiting_captcha' ? '等待服务端验证...'
                         : '处理中...'}
                     </span>
                   </div>
