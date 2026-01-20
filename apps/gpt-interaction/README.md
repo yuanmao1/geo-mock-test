@@ -77,7 +77,7 @@ docker run --rm -p 8000:8000 --shm-size=2g gpt-interaction
 curl -X POST http://localhost:8000/api/v1/tasks \
   -H "Content-Type: application/json" \
   -d '{
-    "message": "请介绍一下 Python 的主要特点",
+    "message": "当前主流的PC处理器采用哪些先进的半导体制造工艺？这些工艺如何影响性能和能效？",
     "enable_search": true,
     "webhook_url": "https://your-webhook.com/callback"
   }'

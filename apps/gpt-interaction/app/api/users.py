@@ -133,8 +133,10 @@ async def check_login_status(
             "message": f"Error checking login status: {str(e)}"
         }
     finally:
-        if browser:
-            browser.close()
+        # Don't close browser - it's managed by the executor's browser pool
+        # if browser:
+        #     browser.close()
+        pass
 
 
 @router.post(

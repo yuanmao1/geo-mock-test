@@ -92,6 +92,7 @@ class Settings(BaseSettings):
     s3_secret_key: Optional[str] = Field(default=None, description="S3 secret key")
     s3_bucket_name: str = Field(default="chatgpt-sessions", description="S3 bucket name for session storage")
     s3_region_name: Optional[str] = Field(default=None, description="S3 region name")
+    s3_enable_backup: bool = Field(default=True, description="Enable S3 session backup", validation_alias="ENABLE_S3_BACKUP")
 
     # Human-like behavior simulation
     human_min_delay_ms: int = Field(default=80, description="Minimum delay for human simulation")

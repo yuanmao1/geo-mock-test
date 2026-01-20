@@ -24,7 +24,7 @@ class S3SessionManager:
         self.bucket_name = settings.s3_bucket_name
         self.s3_client = None
         
-        if settings.s3_access_key and settings.s3_secret_key:
+        if settings.s3_enable_backup and settings.s3_access_key and settings.s3_secret_key:
             try:
                 self.s3_client = boto3.client(
                     's3',
@@ -57,17 +57,44 @@ class S3SessionManager:
 
     def _zip_directory(self, source_dir: Path, output_zip: Path):
         """Compress a directory into a zip file."""
+        # Files to skip (lock files, temp files that may be in use)
+        skip_patterns = ['SingletonLock', 'lockfile', '.lock', 'LOCK']
+        
         with zipfile.ZipFile(output_zip, 'w', zipfile.ZIP_DEFLATED) as zipf:
             for root, _, files in os.walk(source_dir):
                 for file in files:
+                    # Skip lock files
+                    if any(pattern in file for pattern in skip_patterns):
+                        continue
+                    
                     file_path = Path(root) / file
                     arcname = file_path.relative_to(source_dir)
-                    zipf.write(file_path, arcname)
+                    try:
+                        zipf.write(file_path, arcname)
+                    except (FileNotFoundError, PermissionError) as e:
+                        # Skip files that are locked or disappeared
+                        logger.debug(f"Skipping file {file_path}: {e}")
+                        continue
 
     def _unzip_file(self, zip_path: Path, extract_dir: Path):
         """Extract a zip file to a directory."""
         with zipfile.ZipFile(zip_path, 'r') as zipf:
             zipf.extractall(extract_dir)
+
+    def _cleanup_lock_files(self, directory: Path):
+        """Remove lock files from a directory to prevent browser startup issues."""
+        lock_patterns = ['SingletonLock', 'lockfile', '.lock', 'LOCK']
+        
+        for root, _, files in os.walk(directory):
+            for file in files:
+                if any(pattern in file for pattern in lock_patterns):
+                    file_path = Path(root) / file
+                    try:
+                        file_path.unlink()
+                        logger.debug(f"Removed lock file: {file_path}")
+                    except Exception as e:
+                        logger.debug(f"Could not remove lock file {file_path}: {e}")
+
 
     def download_session(self, user_id: str, target_dir: Path) -> bool:
         """
@@ -80,11 +107,18 @@ class S3SessionManager:
         Returns:
             True if successful, False otherwise.
         """
+        if not settings.s3_enable_backup:
+            return False
+
         if not self.s3_client:
             logger.warning("S3 client not initialized, skipping download")
             return False
 
         object_key = f"sessions/{user_id}.zip"
+        # Ensure parent directory exists for temp file
+        if not target_dir.parent.exists():
+            target_dir.parent.mkdir(parents=True, exist_ok=True)
+            
         temp_zip = target_dir.parent / f"{user_id}_temp.zip"
 
         try:
@@ -97,6 +131,10 @@ class S3SessionManager:
 
             logger.info(f"Downloading session for user {user_id} from S3...")
             self.s3_client.download_file(self.bucket_name, object_key, str(temp_zip))
+            
+            # Debug zip size
+            zip_size = temp_zip.stat().st_size
+            logger.info(f"Downloaded session zip size: {zip_size} bytes")
 
             # Clean target directory if it exists
             if target_dir.exists():
@@ -105,6 +143,14 @@ class S3SessionManager:
 
             logger.info(f"Extracting session to {target_dir}...")
             self._unzip_file(temp_zip, target_dir)
+            
+            # Clean up lock files that may have been in the zip
+            self._cleanup_lock_files(target_dir)
+            
+            # Count extracted files
+            file_count = sum(1 for _ in target_dir.rglob('*') if _.is_file())
+            logger.info(f"Extracted {file_count} files to session directory")
+
             
             # Cleanup temp zip
             temp_zip.unlink()
@@ -128,6 +174,9 @@ class S3SessionManager:
         Returns:
             True if successful, False otherwise.
         """
+        if not settings.s3_enable_backup:
+            return False
+
         if not self.s3_client:
             logger.warning("S3 client not initialized, skipping upload")
             return False
